@@ -1,0 +1,11 @@
+#!/bin/bash
+
+# Based on <https://github.com/elementary/terminal/issues/319>.
+
+class_ids=$(xdotool search --onlyvisible --classname $1 | head -n "$(wmctrl -lx | awk '{ print $3 }' | grep $1 -c)")
+if [ -z "$class_ids" ] ; then # case 1
+    shift
+    nohup $* > /dev/null 2>&1 &
+else
+    select-window $1
+fi

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+launch-or-select \
+  google-chrome \
+  /opt/google/chrome/chrome \
+    --enable-dom-distiller \
+    --remote-debugging-port=9222

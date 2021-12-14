@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Minimize all other windows that have the same class as the active
+# one.
+ACTIVE=`xdotool getactivewindow`
+CLASS=`xprop -id $ACTIVE | grep WM_CLASS | grep "^WM_CLASS(STRING) = "|awk '{print $4}'|tr -d '"'`
+for WINDOW in $(xdotool search --class "$CLASS")
+do
+  if [[ "$WINDOW" -ne "$ACTIVE" ]] ; then
+    xdotool windowminimize $WINDOW
+  fi
+done

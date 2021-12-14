@@ -1,0 +1,5 @@
+#!/bin/bash
+
+launch-or-select \
+  signal \
+  /usr/bin/signal-desktop

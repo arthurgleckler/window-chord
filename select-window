@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# Based on <https://github.com/elementary/terminal/issues/319>.
+
+class_ids=$(xdotool search --onlyvisible --classname $1 | head -n "$(wmctrl -lx | awk '{ print $3 }' | grep $1 -c)")
+current_id=$(xdotool getactivewindow)
+if [ -z "$(echo $class_ids | grep $current_id)" ]; then # case 2
+    new_id=$(echo $class_ids | awk '{ print $NF}')
+else # case 3
+    new_id=$(echo $class_ids | awk '{ print $1}')
+fi
+xdotool windowactivate "$new_id"

@@ -1,0 +1,6 @@
+#!/bin/bash
+
+# Doesn't work yet.
+launch-or-select \
+  Inkscape \
+  /usr/bin/inkscape

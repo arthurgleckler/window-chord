@@ -1,0 +1,19 @@
+#+Title: Window Chord
+#+HTML_HEAD: <meta name="viewport" content="width=device-width, initial-scale=1" />
+#+OPTIONS: html-postamble:nil
+#+OPTIONS: num:nil
+#+OPTIONS: toc:nil
+
+Window Chord is a collection of programs for manipulating windows
+under X11.  Each window operation should be bound to a different key
+combination, or "chord," like ~Ctrl-Alt-Shift-W~ for bringing up a web
+browser, or ~Ctrl-Alt-Shift-2~ for making the selected window occupy
+the right half of the screen.  That way, no matter what window system
+you're using, you have consistent, quick, mouse-free control over
+every window that just gets out of the way.
+
+Some of the programs depend on Chibi Scheme, an excellent
+implementation of Scheme written by Alex Shinn, as well as ~wmctrl~
+and ~xdotool~.
+
+See [[https://speechcode.com/blog/window-chord][my blog post]] for more details.

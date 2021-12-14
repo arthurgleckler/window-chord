@@ -1,0 +1,5 @@
+#!/bin/bash
+
+launch-or-select \
+  libreoffice \
+  /usr/bin/libreoffice

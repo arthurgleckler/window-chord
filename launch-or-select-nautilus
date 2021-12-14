@@ -1,0 +1,5 @@
+#!/bin/bash
+
+launch-or-select \
+  Nautilus \
+  /usr/bin/nautilus ~/Downloads/
