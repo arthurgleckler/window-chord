@@ -2,4 +2,4 @@
 
 launch-or-select \
   signal \
-  /usr/bin/signal-desktop
+  flatpak run org.signal.Signal
