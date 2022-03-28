@@ -1,4 +1,4 @@
-;; <> Get these from the root window.
+;; <> Get these from the root window using <wmctrl -d>.
 (define (root-height) 1080)
 (define (root-width) 1920)
 
