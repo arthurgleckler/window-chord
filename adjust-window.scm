@@ -1,6 +1,11 @@
 ;; <> Get these from the root window using <wmctrl -d>.
 (define (root-height) 1080)
 (define (root-width) 1920)
+;;;; Window Chord
+
+;;; Copyright MMXXI-MMXXII Arthur A. Gleckler.
+
+;;; Licensed under MIT license.  See file "LICENSE".
 
 (define-record-type extents
     (make-extents left right top bottom)
