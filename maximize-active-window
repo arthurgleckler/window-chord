@@ -1,7 +1,0 @@
-#!/bin/sh
-set -eu
-dir="$(dirname "$0")"
-exec chibi-scheme \
-  -A "$dir" \
-  -m "(window-chord)" \
-  -e "(maximize (active-window))"
