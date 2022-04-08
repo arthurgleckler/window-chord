@@ -83,27 +83,30 @@
 (define (xrandr . arguments)
   (process->string `(xrandr ,@(map stringify arguments))))
 
-(define (monitor-geometry-alist)
-  (let ((lines (filter (lambda (l) (string-contains l " connected"))
-		       (split-lines (xrandr "--query"))))
-	(geometry-rx (rx (-> name word)
-			 (+ any)
-			 (-> width (+ num))
-			 "x"
-			 (-> height (+ num))
-			 "+"
-			 (-> x (+ num))
-			 "+"
-			 (-> y (+ num))
-			 (+ any))))
-    (map (lambda (l) (let ((m (regexp-matches geometry-rx l)))
-		  (cons (regexp-match-submatch m 'name)
-			(apply make-geometry
-			       (map (lambda (name)
-				      (string->number
-				       (regexp-match-submatch m name)))
-				    '(x y width height))))))
-	 lines)))
+(define monitor-geometry-alist
+  (let ((alist
+	 (delay
+	   (let ((lines (filter (lambda (l) (string-contains l " connected"))
+				(split-lines (xrandr "--query"))))
+		 (geometry-rx (rx (-> name word)
+				  (+ any)
+				  (-> width (+ num))
+				  "x"
+				  (-> height (+ num))
+				  "+"
+				  (-> x (+ num))
+				  "+"
+				  (-> y (+ num))
+				  (+ any))))
+	     (map (lambda (l) (let ((m (regexp-matches geometry-rx l)))
+			   (cons (regexp-match-submatch m 'name)
+				 (apply make-geometry
+					(map (lambda (name)
+					       (string->number
+						(regexp-match-submatch m name)))
+					     '(x y width height))))))
+		  lines)))))
+    (lambda () (force alist))))
 
 (define (xprop name window)
   (process->string `(xprop "-id" ,window ,name)))
