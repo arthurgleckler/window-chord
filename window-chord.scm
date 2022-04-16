@@ -192,9 +192,16 @@
 	   => cdr)
 	  (else (error "Unable to find geometry for window.")))))
 
+(define (mark-fullscreen window)
+  (wmctrl "-i" "-r" window "-b" "add,fullscreen"))
+
+(define (mark-not-fullscreen window)
+  (wmctrl "-i" "-r" window "-b" "remove,fullscreen"))
+
 (define (short window)
   (let ((mg (monitor-geometry window))
 	(wg (window-geometry window)))
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (g/x wg)
 			  (* 1/4 (g/height mg))
@@ -204,6 +211,7 @@
 (define (tall window)
   (let ((mg (monitor-geometry window))
 	(wg (window-geometry window)))
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (g/x wg)
 			  0
@@ -213,6 +221,7 @@
 (define (bottom window)
   (let ((mg (monitor-geometry window))
 	(wg (window-geometry window)))
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (g/x wg)
 			  (- (g/height mg) (g/height wg))
@@ -222,6 +231,7 @@
 (define (top window)
   (let ((mg (monitor-geometry window))
 	(wg (window-geometry window)))
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (g/x wg)
 			  0
@@ -232,6 +242,7 @@
   (case-lambda
    ((window) (left-half window (monitor-geometry window)))
    ((window mg)
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (g/x mg)
 			  0
@@ -242,16 +253,14 @@
   (case-lambda
    ((window) (right-half window (monitor-geometry window)))
    ((window mg)
+    (mark-not-fullscreen window)
     (set-window-geometry! window
 			  (+ (g/x mg) (/ (g/width mg) 2))
 			  0
 			  (/ (g/width mg) 2)
 			  (g/height mg)))))
 
-(define maximize
-  (case-lambda
-   ((window) (maximize window (monitor-geometry window)))
-   ((window mg) (set-window-geometry! window mg))))
+(define (maximize window) (mark-fullscreen window))
 
 (define (rotate predicate list)
   (let ((tail (find-tail predicate list)))
@@ -265,7 +274,7 @@
 			   (monitor-geometry-alist))))
 	 (wg (window-geometry window)))
     (cond ((> (g/width wg) (* 3/4 (g/width mg1)))
-	   (maximize window mg2))
+	   (maximize window))
 	  ((< (- (g/x wg) (g/x mg1))
 	      (/ (g/width mg1) 2))
 	   (left-half window mg2))
