@@ -274,6 +274,7 @@
 			   (monitor-geometry-alist))))
 	 (wg (window-geometry window)))
     (cond ((> (g/width wg) (* 3/4 (g/width mg1)))
+	   (set-window-geometry! window mg2)
 	   (maximize window))
 	  ((< (- (g/x wg) (g/x mg1))
 	      (/ (g/width mg1) 2))
