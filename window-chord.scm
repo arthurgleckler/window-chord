@@ -196,7 +196,8 @@
   (wmctrl "-i" "-r" window "-b" "add,fullscreen"))
 
 (define (mark-not-fullscreen window)
-  (wmctrl "-i" "-r" window "-b" "remove,fullscreen,maximized_horz"))
+  (wmctrl "-i" "-r" window "-b" "remove,fullscreen,maximized_horz")
+  (wmctrl "-i" "-r" window "-b" "remove,maximized_vert"))
 
 (define (short window)
   (let ((mg (monitor-geometry window))
