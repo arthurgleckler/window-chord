@@ -288,8 +288,8 @@ window))' and its \"window-chord\" property to `position'."
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
-	 (mg2 (rotate (lambda (a) (geometry= (cdr a) mg1))
-		      (monitor-geometry-alist))))
+	 (mg2 (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
+			   (monitor-geometry-alist)))))
     (set-window-geometry! window mg2)
     (case (xprop-symbol window "WINDOW_CHORD")
       ((left) (left-half window))
