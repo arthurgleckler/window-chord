@@ -5,8 +5,7 @@
 ;;; Licensed under MIT license.  See file "LICENSE".
 
 (define-library (window-chord)
-  (export active-window bottom left-half maximize other-monitor right-half
-	  short tall top)
+  (export active-window left-half maximize other-monitor right-half)
   (import (chibi assert))
   (import (chibi process))
   (import (scheme small))

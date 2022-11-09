@@ -29,6 +29,19 @@
        (compare g/x)
        (compare g/y)))
 
+(define (centroid g)
+  (values (+ (g/x g) (/ (g/width g) 2))
+	  (+ (g/y g) (/ (g/height g) 2))))
+
+(define (square x) (* x x))
+
+(define (geometries-distance-metric g1)
+  (let-values (((x1 y1) (centroid g1)))
+    (lambda (g2)
+      (let-values (((x2 y2) (centroid g2)))
+	(+ (square (- x2 x1))
+	   (square (- y2 y1)))))))
+
 (define (normalize n) (if (integer? n) n (floor n)))
 
 (define (stringify x)
@@ -108,8 +121,27 @@
 		  lines)))))
     (lambda () (force alist))))
 
-(define (xprop name window)
+(define (xprop window name)
   (process->string `(xprop "-id" ,window ,name)))
+
+(define (set-xprop! window name value)
+  (system-for-effect 'xprop
+		     `("-format" ,name "8s"
+		       "-set" ,name ,value
+		       "-id" ,window)))
+
+(define (xprop-string window name)
+  (let* ((value-rx (rx ,name
+		       "(STRING) = "
+		       "\""
+		       (-> value (+ (complement "\"")))
+		       "\"\n"))
+	 (m (regexp-matches value-rx (xprop window name))))
+    (and m (regexp-match-submatch m 'value))))
+
+(define (xprop-symbol window name)
+  (cond ((xprop-string window name) => string->symbol)
+	(else #false)))
 
 (define (xprop-extents name window transform)
   (let* ((extents-rx (rx ,name
@@ -122,7 +154,7 @@
 			 ", "
 			 (-> bottom (+ num))
 			 "\n"))
-	 (m (regexp-matches extents-rx (xprop name window))))
+	 (m (regexp-matches extents-rx (xprop window name))))
     (and m
 	 (apply make-extents
 		(map (lambda (name)
@@ -151,7 +183,7 @@
     (values (fold (lambda (a x) (max x (g/width (cdr a)))) 0 alist)
 	    (fold (lambda (a x) (max x (g/height (cdr a)))) 0 alist))))
 
-;; The use of `max-monitor-width-height' here works around a bug that prevents
+;; Using `max-monitor-width-height' here works around a bug that prevents
 ;; <wmctrl> from setting the height to a number higher than the vertical
 ;; resolution of the monitor, to account for window exents, when the width of
 ;; the window is not the full width of the monitor.
@@ -187,97 +219,84 @@
     (cond ((find (lambda (a)
 		   (let* ((mg (cdr a))
 			  (x (g/x mg)))
-		     (<= x wx (+ x (g/width mg)))))
+		     (< x wx (+ x (g/width mg)))))
 		 (monitor-geometry-alist))
 	   => cdr)
 	  (else (error "Unable to find geometry for window.")))))
 
-(define (mark-fullscreen window)
-  (wmctrl "-i" "-r" window "-b" "add,fullscreen"))
+(define (horizontal-geometries window left% right%)
+  (let* ((mg (monitor-geometry window))
+	 (h (g/height mg))
+	 (mw (g/width mg))
+	 (ww (* (- right% left%) mw))
+	 (wx (+ (g/x mg) (* left% mw))))
+    (list (make-geometry wx 0 ww h)
+	  (make-geometry wx (* 1/4 h) ww (* 3/4 h)))))
 
-(define (mark-not-fullscreen window)
-  (wmctrl "-i" "-r" window "-b" "remove,fullscreen,maximized_horz")
-  (wmctrl "-i" "-r" window "-b" "remove,maximized_vert"))
+(define (left-half-geometries window)
+  (horizontal-geometries window 0 1/2))
 
-(define (short window)
-  (let ((mg (monitor-geometry window))
-	(wg (window-geometry window)))
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (g/x wg)
-			  (* 1/4 (g/height mg))
-			  (g/width wg)
-			  (* 3/4 (g/height mg)))))
+(define (right-half-geometries window)
+  (horizontal-geometries window 1/2 1))
 
-(define (tall window)
-  (let ((mg (monitor-geometry window))
-	(wg (window-geometry window)))
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (g/x wg)
-			  0
-			  (g/width wg)
-			  (g/height mg))))
+(define (full-width-geometries window)
+  (horizontal-geometries window 0 1))
 
-(define (bottom window)
-  (let ((mg (monitor-geometry window))
-	(wg (window-geometry window)))
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (g/x wg)
-			  (- (g/height mg) (g/height wg))
-			  (g/width wg)
-			  (g/height wg))))
+(define (metric-minimizer elements measure)
+  (let next ((minimizer (car elements))
+	     (minimum (measure (car elements)))
+	     (remaining (cdr elements)))
+    (if (null? remaining)
+	minimizer
+	(let ((minimum* (measure (car remaining))))
+	  (if (< minimum* minimum)
+	      (next (car remaining)
+		    minimum*
+		    (cdr remaining))
+	      (next minimizer
+		    minimum
+		    (cdr remaining)))))))
 
-(define (top window)
-  (let ((mg (monitor-geometry window))
-	(wg (window-geometry window)))
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (g/x wg)
-			  0
-			  (g/width wg)
-			  (g/height wg))))
-
-(define left-half
-  (case-lambda
-   ((window) (left-half window (monitor-geometry window)))
-   ((window mg)
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (g/x mg)
-			  0
-			  (/ (g/width mg) 2)
-			  (g/height mg)))))
-
-(define right-half
-  (case-lambda
-   ((window) (right-half window (monitor-geometry window)))
-   ((window mg)
-    (mark-not-fullscreen window)
-    (set-window-geometry! window
-			  (+ (g/x mg) (/ (g/width mg) 2))
-			  0
-			  (/ (g/width mg) 2)
-			  (g/height mg)))))
-
-(define (maximize window) (mark-fullscreen window))
-
-(define (rotate predicate list)
-  (let ((tail (find-tail predicate list)))
+(define (rotate predicate elements)
+  "Return the element of `elements' after the first one that satisfies
+`predicate', or the first element of `elements'."
+  (let ((tail (find-tail predicate elements)))
     (if (and tail (not (null? (cdr tail))))
 	(cadr tail)
-	(car list))))
+	(car elements))))
+
+(define (next-geometry window geometries position)
+  "If window's \"window-chord\" property matches `position', return the first
+element of `geometries' after the one that has the minimum
+`geometries-distance-metric' from window's geometry. wrapping to the beginning
+if necessary.  Otherwise, return the first element of `geometries'."
+  (let ((label (xprop-symbol window "WINDOW_CHORD")))
+    (if (and label (eq? label position))
+	(let ((minimizer
+	       (metric-minimizer geometries
+				 (geometries-distance-metric
+				  (window-geometry window)))))
+	  (rotate (lambda (g) (eq? g minimizer)) geometries))
+	(car geometries))))
+
+(define (next-geometry! position geometries)
+  (lambda (window)
+    "Set the geometry of window to `(next-geometry window position (geometries
+window))' and its \"window-chord\" property to `position'."
+    (set-window-geometry! window
+			  (next-geometry window (geometries window) position))
+    (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
+
+(define left-half (next-geometry! 'left left-half-geometries))
+(define right-half (next-geometry! 'right right-half-geometries))
+(define maximize (next-geometry! 'full-width full-width-geometries))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
-	 (mg2 (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
-			   (monitor-geometry-alist))))
-	 (wg (window-geometry window)))
-    (cond ((> (g/width wg) (* 3/4 (g/width mg1)))
-	   (set-window-geometry! window mg2)
-	   (maximize window))
-	  ((< (- (g/x wg) (g/x mg1))
-	      (/ (g/width mg1) 2))
-	   (left-half window mg2))
-	  (else (right-half window mg2)))))
+	 (mg2 (rotate (lambda (a) (geometry= (cdr a) mg1))
+		      (monitor-geometry-alist))))
+    (set-window-geometry! window mg2)
+    (case (xprop-symbol window "WINDOW_CHORD")
+      ((left) (left-half window))
+      ((right) (right-half window))
+      (else (maximize window)))))
