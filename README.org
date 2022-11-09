@@ -16,4 +16,4 @@ Some of the programs depend on Chibi Scheme, an excellent
 implementation of Scheme written by Alex Shinn, as well as ~wmctrl~
 and ~xdotool~.
 
-See [[https://speechcode.com/blog/window-chord][my blog post]] for more details.
+See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.
