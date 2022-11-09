@@ -224,23 +224,15 @@
 	   => cdr)
 	  (else (error "Unable to find geometry for window.")))))
 
-(define (horizontal-geometries window left% right%)
-  (let* ((mg (monitor-geometry window))
-	 (h (g/height mg))
-	 (mw (g/width mg))
-	 (ww (* (- right% left%) mw))
-	 (wx (+ (g/x mg) (* left% mw))))
-    (list (make-geometry wx 0 ww h)
-	  (make-geometry wx (* 1/4 h) ww (* 3/4 h)))))
-
-(define (left-half-geometries window)
-  (horizontal-geometries window 0 1/2))
-
-(define (right-half-geometries window)
-  (horizontal-geometries window 1/2 1))
-
-(define (full-width-geometries window)
-  (horizontal-geometries window 0 1))
+(define (horizontal-geometries left% right%)
+  (lambda (window)
+    (let* ((mg (monitor-geometry window))
+	   (h (g/height mg))
+	   (mw (g/width mg))
+	   (ww (* (- right% left%) mw))
+	   (wx (+ (g/x mg) (* left% mw))))
+      (list (make-geometry wx 0 ww h)
+	    (make-geometry wx (* 1/4 h) ww (* 3/4 h))))))
 
 (define (metric-minimizer elements measure)
   (let next ((minimizer (car elements))
@@ -287,9 +279,12 @@ window))' and its \"window-chord\" property to `position'."
 			  (next-geometry window (geometries window) position))
     (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
 
-(define left-half (next-geometry! 'left left-half-geometries))
-(define right-half (next-geometry! 'right right-half-geometries))
-(define maximize (next-geometry! 'full-width full-width-geometries))
+(define left-half (next-geometry! 'left-half (horizontal-geometries 0 1/2)))
+(define left-third (next-geometry! 'left-third (horizontal-geometries 0 1/3)))
+(define right-half (next-geometry! 'right-half (horizontal-geometries 1/2 1)))
+(define right-two-thirds
+  (next-geometry! 'right-two-thirds (horizontal-geometries 1/3 1)))
+(define maximize (next-geometry! 'full-width (horizontal-geometries 0 1)))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
