@@ -224,15 +224,21 @@
 	   => cdr)
 	  (else (error "Unable to find geometry for window.")))))
 
-(define (horizontal-geometries left% right%)
+(define (horizontal-geometry monitor-geometry left right vertical)
+  (let* ((h (g/height monitor-geometry))
+	 (mw (g/width monitor-geometry))
+	 (ww (* (- right left) mw))
+	 (wx (+ (g/x monitor-geometry) (* left mw))))
+    (make-geometry wx
+		   (* (- 1 vertical) h)
+		   ww
+		   (* vertical h))))
+
+(define (horizontal-geometries fractions)
   (lambda (window)
-    (let* ((mg (monitor-geometry window))
-	   (h (g/height mg))
-	   (mw (g/width mg))
-	   (ww (* (- right% left%) mw))
-	   (wx (+ (g/x mg) (* left% mw))))
-      (list (make-geometry wx 0 ww h)
-	    (make-geometry wx (* 1/4 h) ww (* 3/4 h))))))
+    (let ((mg (monitor-geometry window)))
+      (map (lambda (f) (apply horizontal-geometry mg f))
+	   fractions))))
 
 (define (metric-minimizer elements measure)
   (let next ((minimizer (car elements))
@@ -279,12 +285,22 @@ window))' and its \"window-chord\" property to `position'."
 			  (next-geometry window (geometries window) position))
     (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
 
-(define left-half (next-geometry! 'left-half (horizontal-geometries 0 1/2)))
-(define left-third (next-geometry! 'left-third (horizontal-geometries 0 1/3)))
-(define right-half (next-geometry! 'right-half (horizontal-geometries 1/2 1)))
-(define right-two-thirds
-  (next-geometry! 'right-two-thirds (horizontal-geometries 1/3 1)))
-(define maximize (next-geometry! 'full-width (horizontal-geometries 0 1)))
+(define left
+  (next-geometry! 'left
+		  (horizontal-geometries '((0 1/2 1)
+					   (0 1/2 3/4)
+					   (0 1/3 3/4)
+					   (0 1/3 1)))))
+(define right
+  (next-geometry! 'right
+		  (horizontal-geometries '((1/2 1 1)
+					   (1/2 1 3/4)
+					   (1/3 1 3/4)
+					   (1/3 1 1)))))
+(define maximize
+  (next-geometry! 'full-width
+		  (horizontal-geometries  '((0 1 1)
+					    (0 1 3/4)))))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
@@ -292,6 +308,6 @@ window))' and its \"window-chord\" property to `position'."
 			   (monitor-geometry-alist)))))
     (set-window-geometry! window mg2)
     (case (xprop-symbol window "WINDOW_CHORD")
-      ((left) (left-half window))
-      ((right) (right-half window))
+      ((left) (left window))
+      ((right) (right window))
       (else (maximize window)))))
