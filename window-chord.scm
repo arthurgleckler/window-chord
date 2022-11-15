@@ -82,10 +82,10 @@ as `window'."
 	(else #false))))
 
 (define (geometry+extents g xt)
-  (make-geometry (+ (g/x g) (xt/left xt))
-		 (+ (g/y g) (xt/top xt))
-		 (- (g/width g) (xt/left xt) (xt/right xt))
-		 (- (g/height g) (xt/top xt) (xt/bottom xt))))
+  (make-geometry (- (g/x g) (xt/left xt))
+		 (g/y g)
+		 (+ (g/width g) (xt/left xt) (xt/right xt))
+		 (+ (g/height g) (xt/top xt) (xt/bottom xt))))
 
 (define (negate-extents xt)
   (make-extents (- (xt/left xt))
@@ -224,8 +224,7 @@ as `window'."
     (wmctrl "-i"
 	    "-r" window
 	    "-e" (wmctrl-mvarg
-		  (geometry+extents geometry
-				    (negate-extents (window-extents window))))))
+		  (geometry+extents geometry (window-extents window)))))
    ((window x y width height)
     (set-window-geometry! window (make-geometry x y width height)))))
 
