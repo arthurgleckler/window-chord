@@ -187,7 +187,7 @@
 ;; <wmctrl> from setting the height to a number higher than the vertical
 ;; resolution of the monitor, to account for window exents, when the width of
 ;; the window is not the full width of the monitor.
-(define (wmctrl-mvargs geometry)
+(define (wmctrl-mvarg geometry)
   (let-values (((width height) (max-monitor-width-height)))
     (string-join (map (lambda (n) (number->string (normalize n)))
 		      `(0
@@ -202,7 +202,7 @@
    ((window geometry)
     (wmctrl "-i"
 	    "-r" window
-	    "-e" (wmctrl-mvargs
+	    "-e" (wmctrl-mvarg
 		  (geometry+extents geometry
 				    (negate-extents (window-extents window))))))
    ((window x y width height)
