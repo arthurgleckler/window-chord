@@ -2,4 +2,5 @@
 
 launch-or-select \
   gnome-control-center \
-  /usr/bin/gnome-control-center
+  /usr/bin/gnome-control-center \
+  sound
