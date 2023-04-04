@@ -288,14 +288,14 @@ window))' and its \"window-chord\" property to `position'."
 (define left
   (next-geometry! 'left
 		  (horizontal-geometries '((0 1/2 1)
-					   (0 1/2 3/4)
-					   (0 1/3 3/4)
+					   (0 1/2 7/8)
+					   (0 1/3 7/8)
 					   (0 1/3 1)))))
 (define right
   (next-geometry! 'right
 		  (horizontal-geometries '((1/2 1 1)
-					   (1/2 1 3/4)
-					   (1/3 1 3/4)
+					   (1/2 1 7/8)
+					   (1/3 1 7/8)
 					   (1/3 1 1)))))
 (define maximize
   (next-geometry! 'full-width
