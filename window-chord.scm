@@ -1,6 +1,6 @@
 ;;;; Window Chord
 
-;;; Copyright MMXXI-MMXXII Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXIII Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
@@ -53,7 +53,28 @@
 (define (split-lines string) (string-split string "\n" 'suffix))
 
 (define (active-window)
+  "Return a string that is the ID Of the active window."
   (car (split-lines (process->string '(xdotool getactivewindow)))))
+
+(define (all-windows)
+  "Return a list of strings that are the IDs of all windows."
+  (map (lambda (l)
+	 (number->string
+	  (string->number (substring (car (string-split l " " 'suffix)) 2)
+			 16)))
+       (split-lines (process->string '(wmctrl "-l")))))
+
+(define (same-monitor? window-1)
+  (let ((mg (monitor-geometry window-1)))
+    (lambda (window-2)
+      "Return true iff `window-1' and `window-2' are on the same monitor."
+      (geometry= mg (monitor-geometry window-2)))))
+
+(define (all-windows-same-monitor window)
+  "Return a list of strings that are the IDs of all windows on the same monitor
+as `window'."
+  (filter (same-monitor? window)
+	  (all-windows)))
 
 (define (class->windows class)
   (cond ((process->string `(xdotool search "--onlyvisible" "--class" ,class))
@@ -285,18 +306,38 @@ window))' and its \"window-chord\" property to `position'."
 			  (next-geometry window (geometries window) position))
     (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
 
+(define (twist-window! window)
+  (let ((h (/ (g/height (window-geometry window))
+	      (g/height (monitor-geometry window)))))
+    (case (xprop-symbol window "WINDOW_CHORD")
+      ((left)
+       (set-window-geometry! window
+			     (next-geometry window
+					    ((horizontal-geometries
+					      `((0 1/2 ,h)
+						(0 1/3 ,h)))
+					     window)
+					    'left)))
+      ((right)
+       (set-window-geometry! window
+			     (next-geometry window
+					    ((horizontal-geometries
+					      `((1/2 1 ,h)
+						(1/3 1 ,h)))
+					     window)
+					    'right))))))
+
+(define (twist active)
+  (for-each twist-window! (all-windows-same-monitor active)))
+
 (define left
   (next-geometry! 'left
 		  (horizontal-geometries '((0 1/2 1)
-					   (0 1/2 7/8)
-					   (0 1/3 7/8)
-					   (0 1/3 1)))))
+					   (0 1/2 7/8)))))
 (define right
   (next-geometry! 'right
 		  (horizontal-geometries '((1/2 1 1)
-					   (1/2 1 7/8)
-					   (1/3 1 7/8)
-					   (1/3 1 1)))))
+					   (1/2 1 7/8)))))
 (define maximize
   (next-geometry! 'full-width
 		  (horizontal-geometries '((0 1 1)

@@ -1,11 +1,11 @@
 ;;;; Window Chord (Library)
 
-;;; Copyright MMXXI-MMXXII Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXIII Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
 (define-library (window-chord)
-  (export active-window left maximize other-monitor right)
+  (export active-window left maximize other-monitor right twist)
   (import (chibi assert))
   (import (chibi process))
   (import (scheme small))
