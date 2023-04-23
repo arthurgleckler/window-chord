@@ -341,7 +341,7 @@ window))' and its \"window-chord\" property to `position'."
 (define maximize
   (next-geometry! 'full-width
 		  (horizontal-geometries '((0 1 1)
-					   (0 1 3/4)))))
+					   (0 1 7/8)))))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
