@@ -307,6 +307,8 @@ window))' and its \"window-chord\" property to `position'."
     (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
 
 (define (twist-window! window)
+  "Toggle windows between 1/2-1/2 left-right configuration and 1/3-2/3
+left-right configuration."
   (let ((h (/ (g/height (window-geometry window))
 	      (g/height (monitor-geometry window)))))
     (case (xprop-symbol window "WINDOW_CHORD")
