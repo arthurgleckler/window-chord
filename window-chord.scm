@@ -301,7 +301,11 @@ if necessary.  Otherwise, return the first element of `geometries'."
 (define (next-geometry! position geometries)
   (lambda (window)
     "Set the geometry of window to `(next-geometry window position (geometries
-window))' and its \"window-chord\" property to `position'."
+window))' and its \"window-chord\" property to `position'.  Remove
+\"maximized_horz\" if it is present."
+    (wmctrl "-i"
+	    "-r" window
+	    "-b" "remove,maximized_horz")
     (set-window-geometry! window
 			  (next-geometry window (geometries window) position))
     (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
@@ -340,10 +344,12 @@ left-right configuration."
   (next-geometry! 'right
 		  (horizontal-geometries '((1/2 1 1)
 					   (1/2 1 7/8)))))
-(define maximize
-  (next-geometry! 'full-width
-		  (horizontal-geometries '((0 1 1)
-					   (0 1 7/8)))))
+
+(define (maximize window)
+  (wmctrl "-i"
+	  "-r" window
+	  "-b" "add,maximized_horz")
+  (set-xprop! window "WINDOW_CHORD" "full-width"))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
