@@ -5,7 +5,13 @@
 ;;; Licensed under MIT license.  See file "LICENSE".
 
 (define-library (window-chord)
-  (export active-window left maximize other-monitor right twist)
+  (export active-window
+	  left
+	  maximize
+	  other-monitor
+	  right
+	  toggle-height
+	  twist)
   (import (chibi assert))
   (import (chibi process))
   (import (scheme small))

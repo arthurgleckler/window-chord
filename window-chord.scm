@@ -284,12 +284,29 @@ as `window'."
 	(cadr tail)
 	(car elements))))
 
+
+
+(define (window-column window)
+  (let ((mg (monitor-geometry window))
+	(left-x (g/x (window-geometry window))))
+    (car (metric-minimizer `((left . ,(g/x mg))
+			     (right . ,(+ (g/x mg) (/ (g/width mg) 2))))
+			   (lambda (a) (abs (- (cdr a) left-x)))))))
+
+(define (window-height window)
+  (let ((mg (monitor-geometry window)))
+    (if (< (/ (g/y (window-geometry window))
+	      (g/height mg))
+	   1/8)
+	'tall
+	'short)))
+
 (define (next-geometry window geometries position)
   "If window's \"window-chord\" property matches `position', return the first
 element of `geometries' after the one that has the minimum
 `geometries-distance-metric' from window's geometry. wrapping to the beginning
 if necessary.  Otherwise, return the first element of `geometries'."
-  (let ((label (xprop-symbol window "WINDOW_CHORD")))
+  (let ((label (window-column window)))
     (if (and label (eq? label position))
 	(let ((minimizer
 	       (metric-minimizer geometries
@@ -298,24 +315,12 @@ if necessary.  Otherwise, return the first element of `geometries'."
 	  (rotate (lambda (g) (eq? g minimizer)) geometries))
 	(car geometries))))
 
-(define (next-geometry! position geometries)
-  (lambda (window)
-    "Set the geometry of window to `(next-geometry window position (geometries
-window))' and its \"window-chord\" property to `position'.  Remove
-\"maximized_horz\" if it is present."
-    (wmctrl "-i"
-	    "-r" window
-	    "-b" "remove,maximized_horz")
-    (set-window-geometry! window
-			  (next-geometry window (geometries window) position))
-    (set-xprop! window "WINDOW_CHORD" (symbol->string position))))
-
 (define (twist-window! window)
   "Toggle windows between 1/2-1/2 left-right configuration and 1/3-2/3
 left-right configuration."
   (let ((h (/ (g/height (window-geometry window))
 	      (g/height (monitor-geometry window)))))
-    (case (xprop-symbol window "WINDOW_CHORD")
+    (case (window-column window)
       ((left)
        (set-window-geometry! window
 			     (next-geometry window
@@ -336,27 +341,61 @@ left-right configuration."
 (define (twist active)
   (for-each twist-window! (all-windows-same-monitor active)))
 
-(define left
-  (next-geometry! 'left
-		  (horizontal-geometries '((0 1/2 1)
-					   (0 1/2 7/8)))))
-(define right
-  (next-geometry! 'right
-		  (horizontal-geometries '((1/2 1 1)
-					   (1/2 1 7/8)))))
+(define short-fraction 7/8)
+
+;; The `toggle-height' and `set-window-column!' procedures are more complicated
+;; than one would expect because they work around bugs in <wmctrl> (and
+;; <xdotool>) that cause the window to move horizontally unless the position is
+;; specified explicitly.
+(define (toggle-height window)
+  (let* ((mg (monitor-geometry window))
+	 (wg (window-geometry window))
+	 (xt (window-extents window))
+	 (height (+ (g/height mg) (xt/top xt) (xt/bottom xt)))
+	 (fraction (case (window-height window)
+		     ((short) 1)
+		     (else short-fraction))))
+    (set-window-geometry! window
+			  (+ (g/x mg)
+			     (case (window-column window)
+			       ((left) 0)
+			       (else (/ (g/width mg) 2))))
+			  (* (- 1 fraction) height)
+			  (g/width wg)
+			  (* fraction height))))
+
+(define (set-window-column! column)
+  (lambda (window)
+    (wmctrl "-i"
+	    "-r" window
+	    "-b" "remove,maximized_horz")
+    (let* ((mg (monitor-geometry window))
+	   (wg (window-geometry window))
+	   (xt (window-extents window))
+	   (height (+ (g/height mg) (xt/top xt) (xt/bottom xt))))
+      (set-window-geometry! window
+			    (+ (g/x mg)
+			       (case column
+				 ((left) 0)
+				 (else (/ (g/width mg) 2))))
+			    (g/y wg)
+			    (/ (g/width mg) 2)
+			    height))))
+
+(define left (set-window-column! 'left))
+(define right (set-window-column! 'right))
 
 (define (maximize window)
   (wmctrl "-i"
 	  "-r" window
-	  "-b" "add,maximized_horz")
-  (set-xprop! window "WINDOW_CHORD" "full-width"))
+	  "-b" "add,maximized_horz"))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
 	 (mg2 (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
 			   (monitor-geometry-alist)))))
     (set-window-geometry! window mg2)
-    (case (xprop-symbol window "WINDOW_CHORD")
+    (case (window-column window)
       ((left) (left window))
       ((right) (right window))
       (else (maximize window)))))
