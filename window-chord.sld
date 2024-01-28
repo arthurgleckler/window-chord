@@ -1,6 +1,6 @@
 ;;;; Window Chord (Library)
 
-;;; Copyright MMXXI-MMXXIII Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXIV Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
@@ -12,11 +12,11 @@
 	  right
 	  toggle-height
 	  twist)
-  (import (chibi assert))
-  (import (chibi process))
-  (import (scheme small))
-  (import (only (srfi 1) filter filter-map find find-tail fold))
-  (import (only (srfi 16) case-lambda))
-  (import (srfi 115))
-  (import (only (srfi 130) string-contains string-join string-split))
+  (import (chibi assert)
+	  (chibi process)
+	  (scheme small)
+	  (only (srfi 1) filter filter-map find find-tail fold)
+	  (only (srfi 16) case-lambda)
+	  (srfi 115)
+	  (only (srfi 130) string-contains string-join string-split))
   (include "window-chord.scm"))
