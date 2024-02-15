@@ -377,7 +377,7 @@ left-right configuration."
 			       (case column
 				 ((left) 0)
 				 (else (/ (g/width mg) 2))))
-			    (g/y wg)
+			    0
 			    (/ (g/width mg) 2)
 			    height))))
 
