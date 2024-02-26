@@ -1,0 +1,7 @@
+#!/bin/bash
+
+# I haven't figured out how to start an installed page like Youtube
+# Music from the command line, so this just selects it.
+
+select-window \
+  crx_cinhimbnkkaeohfgghhklpknlkffjgod
