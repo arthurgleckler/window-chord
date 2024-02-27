@@ -50,6 +50,9 @@
 	((symbol? x) (symbol->string x))
 	(else (error "Unexpected type." x))))
 
+(define (split-at-commas string)
+  (string-split string ", " 'suffix))
+
 (define (split-lines string) (string-split string "\n" 'suffix))
 
 (define (active-window)
@@ -150,6 +153,14 @@ as `window'."
 		     `("-format" ,name "8s"
 		       "-set" ,name ,value
 		       "-id" ,window)))
+
+(define (xprop-atoms window name)
+  (let* ((value-rx (rx ,name
+		       "(ATOM) = "
+		       (-> value (+ (complement "\n")))
+		       "\n"))
+	 (m (regexp-matches value-rx (xprop window name))))
+    (and m (split-at-commas (regexp-match-submatch m 'value)))))
 
 (define (xprop-string window name)
   (let* ((value-rx (rx ,name
@@ -367,7 +378,7 @@ left-right configuration."
   (lambda (window)
     (wmctrl "-i"
 	    "-r" window
-	    "-b" "remove,maximized_horz")
+	    "-b" "remove,fullscreen,maximized_horz")
     (let* ((mg (monitor-geometry window))
 	   (wg (window-geometry window))
 	   (xt (window-extents window))
@@ -385,9 +396,26 @@ left-right configuration."
 (define right (set-window-column! 'right))
 
 (define (maximize window)
-  (wmctrl "-i"
-	  "-r" window
-	  "-b" "add,maximized_horz"))
+  "Start with fullscreen, but switch to maximized just horizontally if
+repeated."
+  (let* ((wm-states (xprop-atoms window "_NET_WM_STATE"))
+	 (fullscreen?
+	  (and wm-states
+	       (find (lambda (s) (string-contains s "_NET_WM_STATE_FULLSCREEN"))
+		     wm-states))))
+    (cond (fullscreen?
+	   (wmctrl "-i"
+		   "-r" window
+		   "-b" "remove,fullscreen")
+	   (wmctrl "-i"
+		   "-r" window
+		   "-b" "add,maximized_horz"))
+	  (else (wmctrl "-i"
+			"-r" window
+			"-b" "remove,maximized_horz")
+		(wmctrl "-i"
+			"-r" window
+			"-b" "add,fullscreen")))))
 
 (define (other-monitor window)
   (let* ((mg1 (monitor-geometry window))
