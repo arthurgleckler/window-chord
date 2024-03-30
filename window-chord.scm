@@ -417,7 +417,7 @@ repeated."
 			"-r" window
 			"-b" "add,fullscreen")))))
 
-(define (other-monitor window)
+(define (switch-monitor window)
   (let* ((mg1 (monitor-geometry window))
 	 (mg2 (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
 			   (monitor-geometry-alist)))))
@@ -426,3 +426,8 @@ repeated."
       ((left) (left window))
       ((right) (right window))
       (else (maximize window)))))
+
+(define (switch-monitor-all)
+  "Move all windows to the other monitor.  Put Emacs on the right."
+  (for-each switch-monitor (all-windows))
+  (for-each right (class->windows "emacs")))

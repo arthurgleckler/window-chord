@@ -8,8 +8,9 @@
   (export active-window
 	  left
 	  maximize
-	  other-monitor
 	  right
+	  switch-monitor
+	  switch-monitor-all
 	  toggle-height
 	  twist)
   (import (chibi assert)
