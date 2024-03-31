@@ -68,10 +68,10 @@
        (split-lines (process->string '(wmctrl "-l")))))
 
 (define (same-monitor? window-1)
-  (let ((mg (monitor-geometry window-1)))
+  (let ((mg (window-monitor-geometry window-1)))
     (lambda (window-2)
       "Return true iff `window-1' and `window-2' are on the same monitor."
-      (geometry= mg (monitor-geometry window-2)))))
+      (geometry= mg (window-monitor-geometry window-2)))))
 
 (define (all-windows-same-monitor window)
   "Return a list of strings that are the IDs of all windows on the same monitor
@@ -144,6 +144,9 @@ as `window'."
 					     '(x y width height))))))
 		  lines)))))
     (lambda () (force alist))))
+
+(define (monitor-geometry monitor-name)
+  (cdr (assoc monitor-name (monitor-geometry-alist))))
 
 (define (xprop window name)
   (process->string `(xprop "-id" ,window ,name)))
@@ -244,7 +247,7 @@ as `window'."
       (frame-extents-net window)
       (make-extents 0 0 0 0)))
 
-(define (monitor-geometry window)
+(define (window-monitor-geometry window)
   (let* ((wg (window-geometry window))
 	 (wx (+ (g/x wg) (/ (g/width wg) 2))))
     (cond ((find (lambda (a)
@@ -267,7 +270,7 @@ as `window'."
 
 (define (horizontal-geometries fractions)
   (lambda (window)
-    (let ((mg (monitor-geometry window)))
+    (let ((mg (window-monitor-geometry window)))
       (map (lambda (f) (apply horizontal-geometry mg f))
 	   fractions))))
 
@@ -297,14 +300,14 @@ as `window'."
 
 
 (define (window-column window)
-  (let ((mg (monitor-geometry window))
+  (let ((mg (window-monitor-geometry window))
 	(left-x (g/x (window-geometry window))))
     (car (metric-minimizer `((left . ,(g/x mg))
 			     (right . ,(+ (g/x mg) (/ (g/width mg) 2))))
 			   (lambda (a) (abs (- (cdr a) left-x)))))))
 
 (define (window-height window)
-  (let ((mg (monitor-geometry window)))
+  (let ((mg (window-monitor-geometry window)))
     (if (< (/ (g/y (window-geometry window))
 	      (g/height mg))
 	   1/8)
@@ -329,7 +332,7 @@ if necessary.  Otherwise, return the first element of `geometries'."
   "Toggle windows between 1/2-1/2 left-right configuration and 1/3-2/3
 left-right configuration."
   (let ((h (/ (g/height (window-geometry window))
-	      (g/height (monitor-geometry window)))))
+	      (g/height (window-monitor-geometry window)))))
     (case (window-column window)
       ((left)
        (set-window-geometry! window
@@ -358,7 +361,7 @@ left-right configuration."
 ;; <xdotool>) that cause the window to move horizontally unless the position is
 ;; specified explicitly.
 (define (toggle-height window)
-  (let* ((mg (monitor-geometry window))
+  (let* ((mg (window-monitor-geometry window))
 	 (wg (window-geometry window))
 	 (xt (window-extents window))
 	 (height (+ (g/height mg) (xt/top xt) (xt/bottom xt)))
@@ -379,7 +382,7 @@ left-right configuration."
     (wmctrl "-i"
 	    "-r" window
 	    "-b" "remove,fullscreen,maximized_horz")
-    (let* ((mg (monitor-geometry window))
+    (let* ((mg (window-monitor-geometry window))
 	   (wg (window-geometry window))
 	   (xt (window-extents window))
 	   (height (+ (g/height mg) (xt/top xt) (xt/bottom xt))))
@@ -417,17 +420,25 @@ repeated."
 			"-r" window
 			"-b" "add,fullscreen")))))
 
-(define (switch-monitor window)
-  (let* ((mg1 (monitor-geometry window))
-	 (mg2 (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
-			   (monitor-geometry-alist)))))
-    (set-window-geometry! window mg2)
-    (case (window-column window)
-      ((left) (left window))
-      ((right) (right window))
-      (else (maximize window)))))
+(define (other-monitor window)
+  (let ((mg1 (window-monitor-geometry window)))
+    (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
+		 (monitor-geometry-alist)))))
 
-(define (switch-monitor-all)
-  "Move all windows to the other monitor.  Put Emacs on the right."
-  (for-each switch-monitor (all-windows))
-  (for-each right (class->windows "emacs")))
+(define switch-monitor
+  (case-lambda
+   ((window) (switch-monitor window (other-monitor window)))
+   ((window monitor-geometry)
+    (unless (geometry= monitor-geometry
+		       (window-monitor-geometry window))
+      (let ((column (window-column window)))
+	(set-window-geometry! window monitor-geometry)
+	(case column
+	  ((left) (left window))
+	  ((right) (right window))
+	  (else (maximize window))))))))
+
+(define (switch-monitor-all monitor-name)
+  "Move all windows to the monitor named `monitor-name'."
+  (let ((mg (monitor-geometry monitor-name)))
+    (for-each (lambda (w) (switch-monitor w mg)) (all-windows))))

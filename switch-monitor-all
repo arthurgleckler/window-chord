@@ -5,4 +5,4 @@ DIR="$(dirname "$(readlink --canonicalize-existing "$0")")"
 exec chibi-scheme \
   -A "$DIR" \
   -m "(window-chord)" \
-  -e "(switch-monitor-all)"
+  -e "(switch-monitor-all \"$1\")"
