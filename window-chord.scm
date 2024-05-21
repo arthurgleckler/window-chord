@@ -427,6 +427,7 @@ repeated."
 
 (define switch-monitor
   (case-lambda
+   (() (switch-monitor (active-window)))
    ((window) (switch-monitor window (other-monitor window)))
    ((window monitor-geometry)
     (unless (geometry= monitor-geometry
