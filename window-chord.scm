@@ -1,6 +1,6 @@
 ;;;; Window Chord
 
-;;; Copyright MMXXI-MMXXIII Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXIV Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
@@ -237,6 +237,9 @@ as `window'."
    ((window geometry)
     (wmctrl "-i"
 	    "-r" window
+	    "-b" "remove,fullscreen,maximized_horz")
+    (wmctrl "-i"
+	    "-r" window
 	    "-e" (wmctrl-mvarg
 		  (geometry+extents geometry (window-extents window)))))
    ((window x y width height)
@@ -297,14 +300,16 @@ as `window'."
 	(cadr tail)
 	(car elements))))
 
-
-
 (define (window-column window)
-  (let ((mg (window-monitor-geometry window))
-	(left-x (g/x (window-geometry window))))
-    (car (metric-minimizer `((left . ,(g/x mg))
-			     (right . ,(+ (g/x mg) (/ (g/width mg) 2))))
-			   (lambda (a) (abs (- (cdr a) left-x)))))))
+  (let* ((mg (window-monitor-geometry window))
+	 (mw (g/width mg))
+	 (mx (g/x mg))
+	 (wg (window-geometry window))
+	 (w-center-x (+ (g/x wg) (/ (g/width wg) 2))))
+    (car (metric-minimizer `((left . ,(+ mx (* mw 1/4)))
+			     (maximized . ,(+ mx (/ mw 2)))
+			     (right . ,(+ mx (* mw 3/4))))
+			   (lambda (a) (abs (- (cdr a) w-center-x)))))))
 
 (define (window-height window)
   (let ((mg (window-monitor-geometry window)))
@@ -372,7 +377,8 @@ left-right configuration."
 			  (+ (g/x mg)
 			     (case (window-column window)
 			       ((left) 0)
-			       (else (/ (g/width mg) 2))))
+			       ((maximized) (g/width mg))
+			       ((right) (/ (g/width mg) 2))))
 			  (* (- 1 fraction) height)
 			  (g/width wg)
 			  (* fraction height))))
