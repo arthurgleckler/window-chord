@@ -405,26 +405,28 @@ left-right configuration."
 (define right (set-window-column! 'right))
 
 (define (maximize window)
-  "Start with fullscreen, but switch to maximized just horizontally if
+  "Start with maximized horizontally, but switch to fullscreen if
 repeated."
   (let* ((wm-states (xprop-atoms window "_NET_WM_STATE"))
-	 (fullscreen?
+	 (maximized-horizontally?
 	  (and wm-states
-	       (find (lambda (s) (string-contains s "_NET_WM_STATE_FULLSCREEN"))
+	       (find (lambda (s)
+		       (string-contains s "_NET_WM_STATE_MAXIMIZED_HORZ"))
 		     wm-states))))
-    (cond (fullscreen?
+    (cond (maximized-horizontally?
+	   (wmctrl "-i"
+		   "-r" window
+		   "-b" "remove,maximized_horz")
+	   (wmctrl "-i"
+		   "-r" window
+		   "-b" "add,fullscreen"))
+	  (else
 	   (wmctrl "-i"
 		   "-r" window
 		   "-b" "remove,fullscreen")
 	   (wmctrl "-i"
 		   "-r" window
-		   "-b" "add,maximized_horz"))
-	  (else (wmctrl "-i"
-			"-r" window
-			"-b" "remove,maximized_horz")
-		(wmctrl "-i"
-			"-r" window
-			"-b" "add,fullscreen")))))
+		   "-b" "add,maximized_horz")))))
 
 (define (other-monitor window)
   (let ((mg1 (window-monitor-geometry window)))
