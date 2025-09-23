@@ -1,6 +1,6 @@
 ;;;; Window Chord (Library)
 
-;;; Copyright MMXXI-MMXXIV Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXV Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
@@ -8,6 +8,7 @@
   (export active-window
 	  left
 	  maximize
+	  reset-windows
 	  right
 	  switch-monitor
 	  switch-monitor-all

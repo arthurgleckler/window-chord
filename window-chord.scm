@@ -1,6 +1,6 @@
 ;;;; Window Chord
 
-;;; Copyright MMXXI-MMXXIV Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXV Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
@@ -333,8 +333,19 @@ if necessary.  Otherwise, return the first element of `geometries'."
 	  (rotate (lambda (g) (eq? g minimizer)) geometries))
 	(car geometries))))
 
+(define (reset-window! window)
+  "Reset `window' to left, maximized, or right, depending on where they are
+already.  This helps when switching monitors leaves the windows misplaced."
+  (case (window-column window)
+    ((left) (left window))
+    ((maximized) (maximize window))
+    ((right) (right window))))
+
+(define (reset-windows active)
+  (for-each reset-window! (all-windows-same-monitor active)))
+
 (define (twist-window! window)
-  "Toggle windows between 1/2-1/2 left-right configuration and 1/3-2/3
+  "Toggle `window' between 1/2-1/2 left-right configuration and 1/3-2/3
 left-right configuration."
   (let ((h (/ (g/height (window-geometry window))
 	      (g/height (window-monitor-geometry window)))))
