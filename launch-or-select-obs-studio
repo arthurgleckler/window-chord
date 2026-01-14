@@ -1,0 +1,5 @@
+#!/bin/bash
+
+launch-or-select \
+  obs \
+  flatpak run com.obsproject.Studio
