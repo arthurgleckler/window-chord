@@ -1,5 +1,5 @@
 #!/bin/bash
 
 launch-or-select \
-  signal \
-  flatpak run org.signal.Signal
+  obs \
+  flatpak run com.obsproject.Studio
