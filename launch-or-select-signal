@@ -1,5 +1,5 @@
 #!/bin/bash
 
 launch-or-select \
-  obs \
-  obs
+  signal \
+  flatpak run org.signal.Signal
