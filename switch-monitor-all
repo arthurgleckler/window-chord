@@ -2,6 +2,17 @@
 set -eu
 
 DIR="$(dirname "$(readlink --canonicalize-existing "$0")")"
+
+if [ $# -eq 0 ]; then
+  echo "Usage: switch-monitor-all <monitor-name>" >&2
+  echo "" >&2
+  echo "Available monitors:" >&2
+  chibi-scheme -A "$DIR" -m "(window-chord)" \
+    -e '(for-each (lambda (n) (display "  ") (display n) (newline)) (monitor-names))' >&2
+  exit 1
+fi
+
+cd "$DIR"
 exec chibi-scheme \
   -A "$DIR" \
   -m "(window-chord)" \

@@ -2,6 +2,7 @@
 set -eu
 
 DIR="$(dirname "$(readlink --canonicalize-existing "$0")")"
+cd "$DIR"
 exec chibi-scheme \
   -A "$DIR" \
   -m "(window-chord)" \

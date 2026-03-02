@@ -13,7 +13,8 @@ you're using, you have consistent, quick, mouse-free control over
 every window that just gets out of the way.
 
 Some of the programs depend on Chibi Scheme, an excellent
-implementation of Scheme written by Alex Shinn, as well as ~wmctrl~
-and ~xdotool~.
+implementation of Scheme written by Alex Shinn, as well as
+~window-chord-helper~, a program for querying and manipulating X11
+windows in Rust via JSON.
 
 See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.

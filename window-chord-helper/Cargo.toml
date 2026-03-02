@@ -1,0 +1,20 @@
+[package]
+name = "window-chord-helper"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# X11 library - pure Rust
+x11rb = { version = "0.13", features = ["randr"] }
+
+# JSON serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Error handling
+anyhow = "1.0"
+
+[dev-dependencies]
+# For tests
+assert_cmd = "2.0"
+predicates = "3.0"

@@ -1,281 +1,109 @@
 ;;;; Window Chord
 
-;;; Copyright MMXXI-MMXXV Arthur A. Gleckler.
+;;; Copyright MMXXI-MMXXVI Arthur A. Gleckler.
 
 ;;; Licensed under MIT license.  See file "LICENSE".
 
 ;;; This assumes that monitors are laid out horizontally.
 
-(define-record-type extents
-    (make-extents left right top bottom)
-    extents?
-  (left xt/left)
-  (right xt/right)
-  (top xt/top)
-  (bottom xt/bottom))
+;; A single window-chord-helper subprocess is kept running across all requests
+;; so that (a) we avoid per-call fork+exec overhead and (b) we can pipeline
+;; multiple requests (e.g. un-maximize, re-query extents, move) within a single
+;; X11 connection.
 
-(define-record-type geometry
-    (make-geometry x y width height)
-    geometry?
-  (x g/x)
-  (y g/y)
-  (width g/width)
-  (height g/height))
+(define-values
+    (wch-pid wch-in wch-out wch-err)
+  (call-with-process-io (list "window-chord-helper") values))
 
-(define (geometry= g1 g2)
-  (define (compare key) (= (key g1) (key g2)))
-  (and (compare g/width)
-       (compare g/height)
-       (compare g/x)
-       (compare g/y)))
+(define (wch-invoke json-input)
+  "Send a JSON request to the persistent helper and read the response."
+  (json-write json-input wch-in)
+  (newline wch-in)
+  (flush-output-port wch-in)
+  (call-with-input-string (read-line wch-out) json-read))
 
-(define (centroid g)
-  (values (+ (g/x g) (/ (g/width g) 2))
-	  (+ (g/y g) (/ (g/height g) 2))))
+(define (wch-act! operations)
+  "Execute operations via window-chord-helper"
+  (wch-invoke `((command . "act")
+                (operations . ,operations))))
 
-(define (square x) (* x x))
+(define (wch-query query)
+  "Query window-chord-helper with include specification"
+  (wch-invoke `((command . "query")
+                (include . ,query))))
 
-(define (geometries-distance-metric g1)
-  (let-values (((x1 y1) (centroid g1)))
-    (lambda (g2)
-      (let-values (((x2 y2) (centroid g2)))
-	(+ (square (- x2 x1))
-	   (square (- y2 y1)))))))
+(define (window-decimal hex-id)
+  "Convert a hex window ID string with \"0x\" prefix to a decimal."
+  (number->string (string->number (substring hex-id 2) 16)))
 
-(define (normalize n) (if (integer? n) n (floor n)))
+(define (window-hex decimal-id)
+  "Convert a decimal window ID string to a hex string with \"0x\" prefix."
+  (string-append "0x" (number->string (string->number decimal-id) 16)))
 
-(define (stringify x)
-  (cond ((number? x) (number->string (normalize x)))
-	((string? x) x)
-	((symbol? x) (symbol->string x))
-	(else (error "Unexpected type." x))))
-
-(define (split-at-commas string)
-  (string-split string ", " 'suffix))
-
-(define (split-lines string) (string-split string "\n" 'suffix))
+(define (json-ref obj key)
+  "Get value from JSON object (alist)."
+  (cdr (assoc key obj)))
 
 (define (active-window)
-  "Return a string that is the ID Of the active window."
-  (car (split-lines (process->string '(xdotool getactivewindow)))))
+  "Return a string that is the ID of the active window."
+  (let ((result (wch-query '((active_window . #true)))))
+    (window-decimal (json-ref result 'active_window))))
 
-(define (all-windows)
-  "Return a list of strings that are the IDs of all windows."
-  (map (lambda (l)
-	 (number->string
-	  (string->number (substring (car (string-split l " " 'suffix)) 2)
-			 16)))
-       (split-lines (process->string '(wmctrl "-l")))))
+(define (all-windows*)
+  (json-ref (wch-query '((all_windows . #true))) 'windows))
 
-(define (same-monitor? window-1)
-  (let ((mg (window-monitor-geometry window-1)))
-    (lambda (window-2)
-      "Return true iff `window-1' and `window-2' are on the same monitor."
-      (geometry= mg (window-monitor-geometry window-2)))))
+(define all-windows
+  (case-lambda
+    (()
+     (vector->list
+      (vector-map (lambda (w) (window-decimal (json-ref w 'id)))
+                  (all-windows*))))
+    ((monitor)
+     (let* ((mg (json-ref monitor 'geometry))
+            (mx (json-ref mg 'x))
+            (mw (json-ref mg 'width)))
+       (filter-map
+        (lambda (w)
+          (let* ((wg (json-ref w 'geometry))
+                 (cx (+ (json-ref wg 'x) (/ (json-ref wg 'width) 2))))
+            (and (< mx cx (+ mx mw))
+                 (window-decimal (json-ref w 'id)))))
+        (vector->list (all-windows*)))))))
+
+(define (monitor-names)
+  "Return a list of monitor name strings."
+  (map (lambda (m) (json-ref m 'name))
+       (vector->list
+        (json-ref (wch-query '((monitors . #true))) 'monitors))))
+
+(define (window-monitor window)
+  "Return the monitor object containing `window'."
+  (let* ((result (wch-query `((window_details . #(,(window-hex window)))
+                              (monitors . #true))))
+         (window-data (vector-ref (json-ref result 'windows) 0))
+         (wg (json-ref window-data 'geometry))
+         (cx (+ (json-ref wg 'x) (/ (json-ref wg 'width) 2)))
+         (monitors (json-ref result 'monitors)))
+    (vector-ref monitors (find-monitor monitors cx))))
 
 (define (all-windows-same-monitor window)
   "Return a list of strings that are the IDs of all windows on the same monitor
 as `window'."
-  (filter (same-monitor? window)
-	  (all-windows)))
+  (all-windows (window-monitor window)))
 
-(define (class->windows class)
-  (cond ((process->string `(xdotool search "--onlyvisible" "--class" ,class))
-	 => split-lines
-	(else #false))))
-
-(define (geometry+extents g xt)
-  (make-geometry (- (g/x g) (xt/left xt))
-		 (g/y g)
-		 (+ (g/width g) (xt/left xt) (xt/right xt))
-		 (+ (g/height g) (xt/top xt) (xt/bottom xt))))
-
-(define (negate-extents xt)
-  (make-extents (- (xt/left xt))
-		(- (xt/right xt))
-		(- (xt/top xt))
-		(- (xt/bottom xt))))
-
-(define (window-geometry window)
-  (let* ((lines (split-lines
-		 (process->string
-		  `(xdotool getwindowgeometry "-shell" ,window))))
-	 (binding-rx (rx (-> name (+ upper-case))
-			 "="
-			 (-> value (+ any))))
-	 (alist
-	  (filter-map
-	   (lambda (l)
-	     (let ((m (regexp-matches binding-rx l)))
-	       (and m
-		    (cons (string->symbol
-			   (string-downcase (regexp-match-submatch m 'name)))
-			  (string->number (regexp-match-submatch m 'value))))))
-	   lines)))
-    (geometry+extents (apply make-geometry
-			     (map (lambda (name) (cdr (assq name alist)))
-				  '(x y width height)))
-		      (window-extents window))))
-
-(define (xrandr . arguments)
-  (process->string `(xrandr ,@(map stringify arguments))))
-
-(define monitor-geometry-alist
-  (let ((alist
-	 (delay
-	   (let ((lines (filter (lambda (l) (string-contains l " connected"))
-				(split-lines (xrandr "--query"))))
-		 (geometry-rx (rx (-> name word)
-				  (+ any)
-				  (-> width (+ num))
-				  "x"
-				  (-> height (+ num))
-				  "+"
-				  (-> x (+ num))
-				  "+"
-				  (-> y (+ num))
-				  (+ any))))
-	     (map (lambda (l) (let ((m (regexp-matches geometry-rx l)))
-			   (cons (regexp-match-submatch m 'name)
-				 (apply make-geometry
-					(map (lambda (name)
-					       (string->number
-						(regexp-match-submatch m name)))
-					     '(x y width height))))))
-		  lines)))))
-    (lambda () (force alist))))
-
-(define (monitor-geometry monitor-name)
-  (cdr (assoc monitor-name (monitor-geometry-alist))))
-
-(define (xprop window name)
-  (process->string `(xprop "-id" ,window ,name)))
-
-(define (set-xprop! window name value)
-  (system-for-effect 'xprop
-		     `("-format" ,name "8s"
-		       "-set" ,name ,value
-		       "-id" ,window)))
-
-(define (xprop-atoms window name)
-  (let* ((value-rx (rx ,name
-		       "(ATOM) = "
-		       (-> value (+ (complement "\n")))
-		       "\n"))
-	 (m (regexp-matches value-rx (xprop window name))))
-    (and m (split-at-commas (regexp-match-submatch m 'value)))))
-
-(define (xprop-string window name)
-  (let* ((value-rx (rx ,name
-		       "(STRING) = "
-		       "\""
-		       (-> value (+ (complement "\"")))
-		       "\"\n"))
-	 (m (regexp-matches value-rx (xprop window name))))
-    (and m (regexp-match-submatch m 'value))))
-
-(define (xprop-symbol window name)
-  (cond ((xprop-string window name) => string->symbol)
-	(else #false)))
-
-(define (xprop-extents name window transform)
-  (let* ((extents-rx (rx ,name
-			 "(CARDINAL) = "
-			 (-> left (+ num))
-			 ", "
-			 (-> right (+ num))
-			 ", "
-			 (-> top (+ num))
-			 ", "
-			 (-> bottom (+ num))
-			 "\n"))
-	 (m (regexp-matches extents-rx (xprop window name))))
-    (and m
-	 (apply make-extents
-		(map (lambda (name)
-		       (transform
-			(string->number (regexp-match-submatch m name))))
-		     '(left right top bottom))))))
-
-(define (frame-extents-gtk window)
-  (xprop-extents "_GTK_FRAME_EXTENTS" window +))
-
-(define (frame-extents-net window)
-  (xprop-extents "_NET_FRAME_EXTENTS" window -))
-
-(define (system-for-effect command arguments)
-  (or (apply system? command (map stringify arguments))
-      (error "Call failed." command)))
-
-(define (xdotool . arguments)
-  (system-for-effect "xdotool" arguments))
-
-(define (wmctrl . arguments)
-  (system-for-effect "wmctrl" arguments))
-
-(define (max-monitor-width-height)
-  (let* ((alist (monitor-geometry-alist)))
-    (values (fold (lambda (a x) (max x (g/width (cdr a)))) 0 alist)
-	    (fold (lambda (a x) (max x (g/height (cdr a)))) 0 alist))))
-
-;; Using `max-monitor-width-height' here works around a bug that prevents
-;; <wmctrl> from setting the height to a number higher than the vertical
-;; resolution of the monitor, to account for window exents, when the width of
-;; the window is not the full width of the monitor.
-(define (wmctrl-mvarg geometry)
-  (let-values (((width height) (max-monitor-width-height)))
-    (string-join (map (lambda (n) (number->string (normalize n)))
-		      `(0
-			,(g/x geometry)
-			,(g/y geometry)
-			,(min width (g/width geometry))
-			,(min height (g/height geometry))))
-		 ",")))
-
-(define set-window-geometry!
-  (case-lambda
-   ((window geometry)
-    (wmctrl "-i"
-	    "-r" window
-	    "-b" "remove,fullscreen,maximized_horz")
-    (wmctrl "-i"
-	    "-r" window
-	    "-e" (wmctrl-mvarg
-		  (geometry+extents geometry (window-extents window)))))
-   ((window x y width height)
-    (set-window-geometry! window (make-geometry x y width height)))))
-
-(define (window-extents window)
-  (or (frame-extents-gtk window)
-      (frame-extents-net window)
-      (make-extents 0 0 0 0)))
-
-(define (window-monitor-geometry window)
-  (let* ((wg (window-geometry window))
-	 (wx (+ (g/x wg) (/ (g/width wg) 2))))
-    (cond ((find (lambda (a)
-		   (let* ((mg (cdr a))
-			  (x (g/x mg)))
-		     (< x wx (+ x (g/width mg)))))
-		 (monitor-geometry-alist))
-	   => cdr)
-	  (else (error "Unable to find geometry for window.")))))
-
-(define (horizontal-geometry monitor-geometry left right vertical)
-  (let* ((h (g/height monitor-geometry))
-	 (mw (g/width monitor-geometry))
-	 (ww (* (- right left) mw))
-	 (wx (+ (g/x monitor-geometry) (* left mw))))
-    (make-geometry wx
-		   (* (- 1 vertical) h)
-		   ww
-		   (* vertical h))))
-
-(define (horizontal-geometries fractions)
-  (lambda (window)
-    (let ((mg (window-monitor-geometry window)))
-      (map (lambda (f) (apply horizontal-geometry mg f))
-	   fractions))))
+(define (find-monitor monitors x)
+  "Return the index in `monitors' of the monitor containing horizontal
+position `x', defaulting to 0."
+  (let loop ((i 0))
+    (if (>= i (vector-length monitors))
+        0
+        (let* ((m (vector-ref monitors i))
+               (mg (json-ref m 'geometry))
+               (mx (json-ref mg 'x))
+               (mw (json-ref mg 'width)))
+          (if (< mx x (+ mx mw))
+              i
+              (loop (+ i 1)))))))
 
 (define (metric-minimizer elements measure)
   (let next ((minimizer (car elements))
@@ -292,49 +120,23 @@ as `window'."
 		    minimum
 		    (cdr remaining)))))))
 
-(define (rotate predicate elements)
-  "Return the element of `elements' after the first one that satisfies
-`predicate', or the first element of `elements'."
-  (let ((tail (find-tail predicate elements)))
-    (if (and tail (not (null? (cdr tail))))
-	(cadr tail)
-	(car elements))))
-
 (define (window-column window)
-  (let* ((mg (window-monitor-geometry window))
-	 (mw (g/width mg))
-	 (mx (g/x mg))
-	 (wg (window-geometry window))
-	 (w-center-x (+ (g/x wg) (/ (g/width wg) 2))))
+  (let* ((result (wch-query `((window_details . #(,(window-hex window)))
+                              (monitors . #true))))
+         (window-data (vector-ref (json-ref result 'windows) 0))
+         (wg (json-ref window-data 'geometry))
+         (monitor (vector-ref (json-ref result 'monitors) 0))
+         (mg (json-ref monitor 'geometry))
+         (mw (json-ref mg 'width))
+         (mx (json-ref mg 'x))
+         (w-center-x (+ (json-ref wg 'x) (/ (json-ref wg 'width) 2))))
     (car (metric-minimizer `((left . ,(+ mx (* mw 1/4)))
-			     (maximized . ,(+ mx (/ mw 2)))
-			     (right . ,(+ mx (* mw 3/4))))
-			   (lambda (a) (abs (- (cdr a) w-center-x)))))))
-
-(define (window-height window)
-  (let ((mg (window-monitor-geometry window)))
-    (if (< (/ (g/y (window-geometry window))
-	      (g/height mg))
-	   1/8)
-	'tall
-	'short)))
-
-(define (next-geometry window geometries position)
-  "If window's \"window-chord\" property matches `position', return the first
-element of `geometries' after the one that has the minimum
-`geometries-distance-metric' from window's geometry. wrapping to the beginning
-if necessary.  Otherwise, return the first element of `geometries'."
-  (let ((label (window-column window)))
-    (if (and label (eq? label position))
-	(let ((minimizer
-	       (metric-minimizer geometries
-				 (geometries-distance-metric
-				  (window-geometry window)))))
-	  (rotate (lambda (g) (eq? g minimizer)) geometries))
-	(car geometries))))
+                             (maximized . ,(+ mx (/ mw 2)))
+                             (right . ,(+ mx (* mw 3/4))))
+                           (lambda (a) (abs (- (cdr a) w-center-x)))))))
 
 (define (reset-window! window)
-  "Reset `window' to left, maximized, or right, depending on where they are
+  "Reset `window' to left, maximized, or right, depending on where it is
 already.  This helps when switching monitors leaves the windows misplaced."
   (case (window-column window)
     ((left) (left window))
@@ -347,118 +149,243 @@ already.  This helps when switching monitors leaves the windows misplaced."
 (define (twist-window! window)
   "Toggle `window' between 1/2-1/2 left-right configuration and 1/3-2/3
 left-right configuration."
-  (let ((h (/ (g/height (window-geometry window))
-	      (g/height (window-monitor-geometry window)))))
-    (case (window-column window)
-      ((left)
-       (set-window-geometry! window
-			     (next-geometry window
-					    ((horizontal-geometries
-					      `((0 1/2 ,h)
-						(0 1/3 ,h)))
-					     window)
-					    'left)))
-      ((right)
-       (set-window-geometry! window
-			     (next-geometry window
-					    ((horizontal-geometries
-					      `((1/2 1 ,h)
-						(1/3 1 ,h)))
-					     window)
-					    'right))))))
+  (let* ((result (wch-query `((window_details . #(,(window-hex window)))
+                              (monitors . #true))))
+         (window-data (vector-ref (json-ref result 'windows) 0))
+         (wg (json-ref window-data 'geometry))
+         (we (json-ref window-data 'extents))
+         (csd-width (+ (json-ref we 'left) (json-ref we 'right)))
+         (wx (json-ref wg 'x))
+         (ww (json-ref wg 'width))
+         (wh (json-ref wg 'height))
+         (w-center-x (+ wx (/ ww 2)))
+         (monitors (json-ref result 'monitors))
+         (monitor (vector-ref monitors (find-monitor monitors w-center-x)))
+         (mg (json-ref monitor 'geometry))
+         (mw (json-ref mg 'width))
+         (mh (json-ref mg 'height))
+         (mx (json-ref mg 'x))
+         (h (/ wh mh))
+         (column (car (metric-minimizer
+		       `((left . ,(+ mx (* mw 1/4)))
+                         (maximized . ,(+ mx (/ mw 2)))
+                         (right . ,(+ mx (* mw 3/4))))
+                       (lambda (a) (abs (- (cdr a) w-center-x))))))
+         (content-width (- ww csd-width))
+         (target-width
+          (case column
+            ((left)
+             (let ((current-fraction (/ content-width mw)))
+               (if (< (abs (- current-fraction 1/2)) 0.01)
+                   (/ mw 3)		; Currently 1/2.  Switch to 1/3.
+                   (/ mw 2))))		; Currently 1/3.  Switch to 1/2.
+            ((right)
+             (let ((current-fraction (/ content-width mw)))
+               (if (< (abs (- current-fraction 1/2)) 0.01)
+                   (* 2 (/ mw 3))	; Currently 1/2.  Switch to 2/3.
+                   (/ mw 2))))		; Currently 2/3.  Switch to 1/2.
+            (else ww)))
+         (target-x
+          (case column
+            ((left) mx)
+            ((right) (+ mx (- mw target-width)))
+            (else wx))))
+    (wch-act! (list->vector
+               `(((geometry . ((x . ,target-x)
+                               (y . ,(json-ref wg 'y))
+                               (width . ,target-width)
+                               (height . ,(* h mh))))
+                  (type . "set_window_geometry")
+                  (window . ,(window-hex window))))))))
 
 (define (twist active)
   (for-each twist-window! (all-windows-same-monitor active)))
 
 (define short-fraction 7/8)
 
-;; The `toggle-height' and `set-window-column!' procedures are more complicated
-;; than one would expect because they work around bugs in <wmctrl> (and
-;; <xdotool>) that cause the window to move horizontally unless the position is
-;; specified explicitly.
+(define (normalize n) (if (integer? n) n (floor n)))
+
 (define (toggle-height window)
-  (let* ((mg (window-monitor-geometry window))
-	 (wg (window-geometry window))
-	 (xt (window-extents window))
-	 (height (+ (g/height mg) (xt/top xt) (xt/bottom xt)))
-	 (fraction (case (window-height window)
-		     ((short) 1)
-		     (else short-fraction))))
-    (set-window-geometry! window
-			  (+ (g/x mg)
-			     (case (window-column window)
-			       ((left) 0)
-			       ((maximized) (g/width mg))
-			       ((right) (/ (g/width mg) 2))))
-			  (* (- 1 fraction) height)
-			  (g/width wg)
-			  (* fraction height))))
+  (let* ((result (wch-query `((window_details . #(,(window-hex window)))
+                              (monitors . #true))))
+         (window-data (vector-ref (json-ref result 'windows) 0))
+         (wg (json-ref window-data 'geometry))
+         (wx (json-ref wg 'x))
+         (wy (json-ref wg 'y))
+         (ww (json-ref wg 'width))
+         (w-center-x (+ wx (/ ww 2)))
+         (monitors (json-ref result 'monitors))
+         (monitor (vector-ref monitors (find-monitor monitors w-center-x)))
+         (mg (json-ref monitor 'geometry))
+         (mx (json-ref mg 'x))
+         (mw (json-ref mg 'width))
+         (mh (json-ref mg 'height))
+         (height mh)
+         (wh (json-ref wg 'height))
+         (is-short (< (abs (- (/ wh mh) short-fraction))
+                      (abs (- (/ wh mh) 1))))
+         (fraction (if is-short 1 short-fraction))
+         (column (car (metric-minimizer
+		       `((left . ,(+ mx (* mw 1/4)))
+                         (maximized . ,(+ mx (/ mw 2)))
+                         (right . ,(+ mx (* mw 3/4))))
+                       (lambda (a) (abs (- (cdr a) w-center-x))))))
+         (x (+ mx (case column
+                    ((left) 0)
+                    ((maximized) (/ mw 2))
+                    ((right) (/ mw 2)))))
+         (y (normalize (* (- 1 fraction) height)))
+         (h (normalize (* fraction height))))
+    (wch-act! (list->vector
+               `(((type . "set_window_geometry")
+                  (window . ,(window-hex window))
+                  (geometry . ((x . ,x)
+                               (y . ,y)
+                               (width . ,ww)
+                               (height . ,h)))))))))
 
 (define (set-window-column! column)
   (lambda (window)
-    (wmctrl "-i"
-	    "-r" window
-	    "-b" "remove,fullscreen,maximized_horz")
-    (let* ((mg (window-monitor-geometry window))
-	   (wg (window-geometry window))
-	   (xt (window-extents window))
-	   (height (+ (g/height mg) (xt/top xt) (xt/bottom xt))))
-      (set-window-geometry! window
-			    (+ (g/x mg)
-			       (case column
-				 ((left) 0)
-				 (else (/ (g/width mg) 2))))
-			    0
-			    (/ (g/width mg) 2)
-			    height))))
+    (let* ((result (wch-query `((active_window . #true)
+                                (window_details . #(,(window-hex window)))
+                                (monitors . #true))))
+           (window-data (vector-ref (json-ref result 'windows) 0))
+           (wg (json-ref window-data 'geometry))
+           (wx (json-ref wg 'x))
+           (ww (json-ref wg 'width))
+           (w-center-x (+ wx (/ ww 2)))
+           (monitors (json-ref result 'monitors))
+           (monitor (vector-ref monitors (find-monitor monitors w-center-x)))
+           (mg (json-ref monitor 'geometry))
+           (mx (json-ref mg 'x))
+           (mw (json-ref mg 'width))
+           (mh (json-ref mg 'height))
+           (height mh)
+           (x (+ mx (case column
+                      ((left) 0)
+                      (else (/ mw 2)))))
+           (width (/ mw 2)))
+      (wch-act! (list->vector
+                 `(((type . "set_window_geometry")
+                    (window . ,(window-hex window))
+                    (geometry . ((x . ,x)
+				 (y . 0)
+				 (width . ,width)
+				 (height . ,height))))))))))
 
 (define left (set-window-column! 'left))
 (define right (set-window-column! 'right))
 
 (define (maximize window)
-  "Start with maximized horizontally, but switch to fullscreen if
+  "Start with maximized horizontally, but switch to full-screen mode if
 repeated."
-  (let* ((wm-states (xprop-atoms window "_NET_WM_STATE"))
-	 (maximized-horizontally?
-	  (and wm-states
-	       (find (lambda (s)
-		       (string-contains s "_NET_WM_STATE_MAXIMIZED_HORZ"))
-		     wm-states))))
+  (let* ((result (wch-query `((window_details . #(,(window-hex window))))))
+         (window-data (vector-ref (json-ref result 'windows) 0))
+         (states (json-ref window-data 'states))
+         (maximized-horizontally?
+          (and states
+               (let loop ((i 0))
+                 (cond ((>= i (vector-length states)) #false)
+                       ((string-contains (vector-ref states i)
+					 "_NET_WM_STATE_MAXIMIZED_HORZ"))
+                       (else (loop (+ i 1))))))))
     (cond (maximized-horizontally?
-	   (wmctrl "-i"
-		   "-r" window
-		   "-b" "remove,maximized_horz")
-	   (wmctrl "-i"
-		   "-r" window
-		   "-b" "add,fullscreen"))
-	  (else
-	   (wmctrl "-i"
-		   "-r" window
-		   "-b" "remove,fullscreen")
-	   (wmctrl "-i"
-		   "-r" window
-		   "-b" "add,maximized_horz")))))
-
-(define (other-monitor window)
-  (let ((mg1 (window-monitor-geometry window)))
-    (cdr (rotate (lambda (a) (geometry= (cdr a) mg1))
-		 (monitor-geometry-alist)))))
+           (wch-act! (list->vector
+                      `(((type . "set_window_state")
+                         (window . ,(window-hex window))
+                         (remove_states . #("_NET_WM_STATE_MAXIMIZED_HORZ"))
+                         (add_states . #("_NET_WM_STATE_FULLSCREEN")))))))
+          (else
+           (wch-act! (list->vector
+                      `(((type . "set_window_state")
+                         (window . ,(window-hex window))
+                         (remove_states . #("_NET_WM_STATE_FULLSCREEN"))
+                         (add_states . #("_NET_WM_STATE_MAXIMIZED_HORZ"))))))))))
 
 (define switch-monitor
   (case-lambda
-   (() (switch-monitor (active-window)))
-   ((window) (switch-monitor window (other-monitor window)))
-   ((window monitor-geometry)
-    (unless (geometry= monitor-geometry
-		       (window-monitor-geometry window))
-      (let ((column (window-column window)))
-	(set-window-geometry! window monitor-geometry)
-	(case column
-	  ((left) (left window))
-	  ((right) (right window))
-	  (else (maximize window))))))))
+    (() (switch-monitor (active-window)))
+    ((window)
+     (let* ((result (wch-query `((window_details . #(,(window-hex window)))
+                                 (monitors . #true))))
+            (window-data (vector-ref (json-ref result 'windows) 0))
+            (wg (json-ref window-data 'geometry))
+            (wx (json-ref wg 'x))
+            (ww (json-ref wg 'width))
+            (w-center-x (+ wx (/ ww 2)))
+            (monitors (json-ref result 'monitors))
+            (i (find-monitor monitors w-center-x))
+            (other-monitor-idx (modulo (+ i 1) (vector-length monitors)))
+            (other-monitor (vector-ref monitors other-monitor-idx))
+            (other-mg (json-ref other-monitor 'geometry))
+            (current-monitor (vector-ref monitors i))
+            (current-mg (json-ref current-monitor 'geometry))
+            (current-mx (json-ref current-mg 'x))
+            (current-mw (json-ref current-mg 'width))
+            (column (car (metric-minimizer
+			  `((left . ,(+ current-mx (* current-mw 1/4)))
+                            (maximized . ,(+ current-mx (/ current-mw 2)))
+                            (right . ,(+ current-mx (* current-mw 3/4))))
+                          (lambda (a) (abs (- (cdr a) w-center-x))))))
+            (target-mx (json-ref other-mg 'x))
+            (target-mw (json-ref other-mg 'width))
+            (target-mh (json-ref other-mg 'height))
+            (height target-mh))
+       (case column
+         ((left)
+          (wch-act! (list->vector
+                     `(((type . "set_window_geometry")
+			(window . ,(window-hex window))
+			(geometry . ((x . ,target-mx)
+                                     (y . 0)
+                                     (width . ,(/ target-mw 2))
+                                     (height . ,height))))))))
+         ((right)
+          (wch-act! (list->vector
+                     `(((type . "set_window_geometry")
+			(window . ,(window-hex window))
+			(geometry . ((x . ,(+ target-mx (/ target-mw 2)))
+                                     (y . 0)
+                                     (width . ,(/ target-mw 2))
+                                     (height . ,height))))))))
+         (else
+          (wch-act! (list->vector
+                     `(((type . "set_window_geometry")
+			(window . ,(window-hex window))
+			(geometry . ((x . ,target-mx)
+                                     (y . 0)
+                                     (width . ,(/ target-mw 2))
+                                     (height . ,height))))
+                       ((type . "set_window_state")
+			(window . ,(window-hex window))
+			(remove_states . #("_NET_WM_STATE_FULLSCREEN"))
+			(add_states . #("_NET_WM_STATE_MAXIMIZED_HORZ"))))))))))))
 
 (define (switch-monitor-all monitor-name)
   "Move all windows to the monitor named `monitor-name'."
-  (let ((mg (monitor-geometry monitor-name)))
-    (for-each (lambda (w) (switch-monitor w mg)) (all-windows))))
+  (let* ((result (wch-query `((all_windows . #true)
+                              (monitors . #true))))
+         (monitors (json-ref result 'monitors))
+         (target-monitor
+          (let loop ((i 0))
+            (and (< i (vector-length monitors))
+                 (let ((m (vector-ref monitors i)))
+                   (if (string-contains (json-ref m 'name) monitor-name)
+                       m
+                       (loop (+ i 1)))))))
+         (target-mg (and target-monitor (json-ref target-monitor 'geometry))))
+    (when target-mg
+      (let ((all-wins (all-windows))
+            (target-mx (json-ref target-mg 'x))
+            (target-mw (json-ref target-mg 'width))
+            (target-mh (json-ref target-mg 'height)))
+        (for-each
+         (lambda (w)
+           (wch-act! (list->vector
+                      `(((type . "set_window_geometry")
+                         (window . ,(window-hex w))
+                         (geometry . ((x . ,target-mx)
+                                      (y . 0)
+                                      (width . ,(/ target-mw 2))
+                                      (height . ,target-mh))))))))
+         all-wins)))))

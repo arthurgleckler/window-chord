@@ -1,0 +1,23 @@
+# Rust build artifacts
+/target/
+
+# Cargo.lock is typically committed for binaries, but you may exclude it
+# Cargo.lock
+
+# Backup files
+*.~*
+*~
+
+# Debug files
+*.pdb
+
+# IDE/Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
