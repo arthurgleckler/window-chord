@@ -17,4 +17,17 @@ implementation of Scheme written by Alex Shinn, as well as
 ~window-chord-helper~, a program for querying and manipulating X11
 windows in Rust via JSON.
 
-See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.
+~window-chord-helper~ is written in Rust.  To build it:
+
+#+begin_example
+cd window-chord-helper
+cargo build --release
+#+end_example
+
+The binary will be at
+~window-chord-helper/target/release/window-chord-helper~.
+
+Put it on your path.
+
+See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.  (But they describe
+the version before ~window-chord-helper~.)
