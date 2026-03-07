@@ -21,7 +21,6 @@ impl X11Context {
     /// `_NET_WM_STATE` and `_GTK_FRAME_EXTENTS`.
     pub fn set_window_geometry(&self, window: Window, geom: &Geometry) -> Result<()> {
         let initial_extents = self.get_gtk_frame_extents(window)?;
-        let is_csd = initial_extents.is_some();
         let states = self.get_window_states(window)?;
         let dominated = [
             self.atoms().net_wm_state_fullscreen,
@@ -36,19 +35,33 @@ impl X11Context {
             self.remove_window_states(window, &dominated)?;
             self.conn().flush()?;
 
-            self.wait_until(window, |ctx| {
+            self.wait_until(window, std::time::Duration::from_millis(500), |ctx| {
                 let s = ctx.get_window_states(window)?;
                 Ok(!dominated.iter().any(|a| s.contains(a)))
             })?;
 
-            if is_csd {
-                // CSD apps update _GTK_FRAME_EXTENTS asynchronously after
-                // un-maximizing.  Wait until the value differs from the
-                // snapshot we took while the window was still maximized.
-                self.wait_until(window, |ctx| {
-                    let ext = ctx.get_gtk_frame_extents(window)?;
-                    Ok(ext != initial_extents)
-                })?;
+            // CSD apps update _GTK_FRAME_EXTENTS asynchronously after
+            // un-maximizing.  The property may also be absent while the
+            // window is maximized and only appear after the transition.
+            // Wait for the value to change and then stabilize, since it
+            // may pass through intermediate values.
+            self.wait_until(window, std::time::Duration::from_millis(500), |ctx| {
+                let ext = ctx.get_gtk_frame_extents(window)?;
+                Ok(ext != initial_extents)
+            })?;
+            loop {
+                let current = self.get_gtk_frame_extents(window)?;
+                let changed = self.wait_until(
+                    window,
+                    std::time::Duration::from_millis(50),
+                    |ctx| {
+                        let ext = ctx.get_gtk_frame_extents(window)?;
+                        Ok(ext != current)
+                    },
+                )?;
+                if !changed {
+                    break;
+                }
             }
 
             self.deselect_property_notify(window)?;
@@ -126,29 +139,31 @@ impl X11Context {
     }
 
     /// Block until `predicate` returns true, draining `PropertyNotify` events
-    /// in between.  Times out after 500 ms.
+    /// in between.  Returns whether the predicate was satisfied before the
+    /// timeout.
     fn wait_until(
         &self,
         _window: Window,
+        timeout: std::time::Duration,
         predicate: impl Fn(&Self) -> Result<bool>,
-    ) -> Result<()> {
+    ) -> Result<bool> {
         if predicate(self)? {
-            return Ok(());
+            return Ok(true);
         }
 
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(500);
+        let deadline = std::time::Instant::now() + timeout;
 
         loop {
             match self.conn().poll_for_event()? {
                 Some(Event::PropertyNotify(_)) => {
                     if predicate(self)? {
-                        return Ok(());
+                        return Ok(true);
                     }
                 }
                 Some(_) => {}
                 None => {
                     if std::time::Instant::now() >= deadline {
-                        return Ok(());
+                        return Ok(false);
                     }
                     std::thread::sleep(std::time::Duration::from_millis(1));
                 }
