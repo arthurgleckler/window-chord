@@ -44,23 +44,26 @@ impl X11Context {
             // un-maximizing.  The property may also be absent while the
             // window is maximized and only appear after the transition.
             // Wait for the value to change and then stabilize, since it
-            // may pass through intermediate values.
-            self.wait_until(window, std::time::Duration::from_millis(500), |ctx| {
-                let ext = ctx.get_gtk_frame_extents(window)?;
-                Ok(ext != initial_extents)
-            })?;
-            loop {
-                let current = self.get_gtk_frame_extents(window)?;
-                let changed = self.wait_until(
-                    window,
-                    std::time::Duration::from_millis(50),
-                    |ctx| {
-                        let ext = ctx.get_gtk_frame_extents(window)?;
-                        Ok(ext != current)
-                    },
-                )?;
-                if !changed {
-                    break;
+            // may pass through intermediate values.  Non-CSD windows
+            // never have this property, so skip the wait for them.
+            if initial_extents.is_some() {
+                self.wait_until(window, std::time::Duration::from_millis(500), |ctx| {
+                    let ext = ctx.get_gtk_frame_extents(window)?;
+                    Ok(ext != initial_extents)
+                })?;
+                loop {
+                    let current = self.get_gtk_frame_extents(window)?;
+                    let changed = self.wait_until(
+                        window,
+                        std::time::Duration::from_millis(50),
+                        |ctx| {
+                            let ext = ctx.get_gtk_frame_extents(window)?;
+                            Ok(ext != current)
+                        },
+                    )?;
+                    if !changed {
+                        break;
+                    }
                 }
             }
 
@@ -84,7 +87,8 @@ impl X11Context {
 
         // Cross-monitor moves fail when the target height exceeds the current
         // monitor's height.  Work around this with a two-step move: first move
-        // with a conservative height, then resize to the target height.
+        // with a conservative height, wait for the WM to process the move,
+        // then resize to the target height.
         let current_geom = self.get_window_geometry(window)?;
         let current_monitor_h = self.monitor_height_at(current_geom.x, current_geom.width)?;
 
@@ -95,6 +99,10 @@ impl X11Context {
             };
             self.send_moveresize(window, &interim)?;
             self.conn().flush()?;
+
+            // Wait for the WM to process the move so the window is on the
+            // target monitor before we resize to the full height.
+            self.poll_geometry_change(window, &current_geom)?;
 
             self.send_moveresize(window, &adjusted)?;
         } else {
@@ -118,6 +126,26 @@ impl X11Context {
             }
         }
         Ok(1080)
+    }
+
+    /// Poll `get_window_geometry` until it differs from `before`, confirming
+    /// the WM has processed a pending moveresize.  Times out after 500 ms.
+    fn poll_geometry_change(&self, window: Window, before: &Geometry) -> Result<()> {
+        let deadline =
+            std::time::Instant::now() + std::time::Duration::from_millis(500);
+        loop {
+            // Round-trip ensures any prior requests have reached the server.
+            let g = self.get_window_geometry(window)?;
+            if g.x != before.x || g.y != before.y
+                || g.width != before.width || g.height != before.height
+            {
+                return Ok(());
+            }
+            if std::time::Instant::now() >= deadline {
+                return Ok(()); // proceed anyway
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
     }
 
     fn select_property_notify(&self, window: Window) -> Result<()> {
