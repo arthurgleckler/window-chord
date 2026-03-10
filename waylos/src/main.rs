@@ -1,10 +1,11 @@
 /// waylos — Wayland Launch Or Select
 ///
-/// Usage: waylos <app_id>
+/// Usage: waylos <app_id> [launch_command...]
 ///
 /// Activates a toplevel whose app_id contains <app_id> (case-insensitive).
 /// If the currently active window already matches, cycles to the next one.
-/// Exit 0 on success, 1 if no match, 2 on error.
+/// If no match is found and a launch command is given, runs it in the
+/// background.  Exit 0 on success, 1 if no match and no command, 2 on error.
 
 use cosmic_protocols::toplevel_info::v1::client::{
     zcosmic_toplevel_handle_v1, zcosmic_toplevel_info_v1,
@@ -208,11 +209,12 @@ impl Dispatch<zcosmic_toplevel_manager_v1::ZcosmicToplevelManagerV1, ()> for Sta
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() != 2 {
-        eprintln!("Usage: waylos <app_id>");
+    if args.len() < 2 {
+        eprintln!("Usage: waylos <app_id> [launch_command...]");
         process::exit(2);
     }
     let target = args[1].to_lowercase();
+    let launch_cmd = &args[2..];
 
     let conn = match Connection::connect_to_env() {
         Ok(c) => c,
@@ -285,6 +287,18 @@ fn main() {
             });
             manager.activate(cosmic, seat);
             conn.flush().expect("flush");
+        }
+        None if !launch_cmd.is_empty() => {
+            process::Command::new(&launch_cmd[0])
+                .args(&launch_cmd[1..])
+                .stdin(process::Stdio::null())
+                .stdout(process::Stdio::null())
+                .stderr(process::Stdio::null())
+                .spawn()
+                .unwrap_or_else(|e| {
+                    eprintln!("waylos: failed to launch {}: {e}", launch_cmd[0]);
+                    process::exit(2);
+                });
         }
         None => {
             eprintln!("waylos: no window matching '{}'", args[1]);
