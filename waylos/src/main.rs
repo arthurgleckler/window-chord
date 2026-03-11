@@ -301,6 +301,33 @@ fn main() {
                 });
         }
         None => {
+            let config_dir = std::env::var("XDG_CONFIG_HOME")
+                .map(std::path::PathBuf::from)
+                .unwrap_or_else(|_| {
+                    std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
+                        .join(".config")
+                });
+            let config_path = config_dir.join("waylos/commands.json");
+            if let Ok(data) = std::fs::read_to_string(&config_path) {
+                if let Ok(map) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&data) {
+                    if let Some(serde_json::Value::Array(arr)) = map.get(&args[1]) {
+                        let cmd: Vec<&str> = arr.iter().filter_map(|v| v.as_str()).collect();
+                        if !cmd.is_empty() {
+                            process::Command::new(cmd[0])
+                                .args(&cmd[1..])
+                                .stdin(process::Stdio::null())
+                                .stdout(process::Stdio::null())
+                                .stderr(process::Stdio::null())
+                                .spawn()
+                                .unwrap_or_else(|e| {
+                                    eprintln!("waylos: failed to launch '{}': {e}", cmd[0]);
+                                    process::exit(2);
+                                });
+                            return;
+                        }
+                    }
+                }
+            }
             eprintln!("waylos: no window matching '{}'", args[1]);
             process::exit(1);
         }
