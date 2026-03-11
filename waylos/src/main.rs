@@ -3,9 +3,10 @@
 /// Usage: waylos <app_id> [launch_command...]
 ///
 /// Activates a toplevel whose app_id contains <app_id> (case-insensitive).
-/// If the currently active window already matches, cycles to the next one.
-/// If no match is found and a launch command is given, runs it in the
-/// background.  Exit 0 on success, 1 if no match and no command, 2 on error.
+/// If there are multiple matches, cycles through them on repeated
+/// invocations.  If no match is found and a launch command is given, runs
+/// it in the background.  Exit 0 on success, 1 if no match and no command,
+/// 2 on error.
 
 use cosmic_protocols::toplevel_info::v1::client::{
     zcosmic_toplevel_handle_v1, zcosmic_toplevel_info_v1,
@@ -29,7 +30,7 @@ struct Window {
     foreign: ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1,
     cosmic: Option<zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1>,
     app_id: Option<String>,
-    activated: bool,
+    identifier: Option<String>,
 }
 
 // --- Registry ---
@@ -120,7 +121,7 @@ impl Dispatch<ext_foreign_toplevel_list_v1::ExtForeignToplevelListV1, ()> for St
                 foreign: toplevel,
                 cosmic,
                 app_id: None,
-                activated: false,
+                identifier: None,
             });
         }
     }
@@ -146,10 +147,18 @@ impl Dispatch<ext_foreign_toplevel_handle_v1::ExtForeignToplevelHandleV1, ()> fo
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let ext_foreign_toplevel_handle_v1::Event::AppId { app_id } = event {
-            if let Some(w) = state.toplevels.iter_mut().find(|w| &w.foreign == handle) {
-                w.app_id = Some(app_id);
+        match event {
+            ext_foreign_toplevel_handle_v1::Event::AppId { app_id } => {
+                if let Some(w) = state.toplevels.iter_mut().find(|w| &w.foreign == handle) {
+                    w.app_id = Some(app_id);
+                }
             }
+            ext_foreign_toplevel_handle_v1::Event::Identifier { identifier } => {
+                if let Some(w) = state.toplevels.iter_mut().find(|w| &w.foreign == handle) {
+                    w.identifier = Some(identifier);
+                }
+            }
+            _ => {}
         }
     }
 }
@@ -172,24 +181,13 @@ impl Dispatch<zcosmic_toplevel_info_v1::ZcosmicToplevelInfoV1, ()> for State {
 
 impl Dispatch<zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1, ()> for State {
     fn event(
-        state: &mut Self,
-        handle: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
-        event: zcosmic_toplevel_handle_v1::Event,
+        _: &mut Self,
+        _: &zcosmic_toplevel_handle_v1::ZcosmicToplevelHandleV1,
+        _: zcosmic_toplevel_handle_v1::Event,
         _: &(),
         _: &Connection,
         _: &QueueHandle<Self>,
     ) {
-        if let zcosmic_toplevel_handle_v1::Event::State { state: bytes } = event {
-            let activated = bytes
-                .chunks_exact(4)
-                .map(|c| u32::from_ne_bytes(c.try_into().unwrap()))
-                .any(|v| v == 2); // 2 = activated
-            if let Some(w) = state.toplevels.iter_mut().find(|w| {
-                w.cosmic.as_ref() == Some(handle)
-            }) {
-                w.activated = activated;
-            }
-        }
     }
 }
 
@@ -205,6 +203,12 @@ impl Dispatch<zcosmic_toplevel_manager_v1::ZcosmicToplevelManagerV1, ()> for Sta
         _: &QueueHandle<Self>,
     ) {
     }
+}
+
+fn state_path(target: &str) -> std::path::PathBuf {
+    let dir = std::env::var("XDG_RUNTIME_DIR")
+        .unwrap_or_else(|_| "/tmp".into());
+    std::path::PathBuf::from(dir).join(format!("waylos-{target}.last"))
 }
 
 fn main() {
@@ -236,7 +240,8 @@ fn main() {
     eq.roundtrip(&mut state).expect("roundtrip 1");
     eq.roundtrip(&mut state).expect("roundtrip 2");
 
-    if std::env::var("WAYLOS_DEBUG").is_ok() {
+    let debug = std::env::var("WAYLOS_DEBUG").is_ok();
+    if debug {
         eprintln!(
             "waylos: info={} manager={} seat={} toplevels={}",
             state.info.is_some(),
@@ -245,7 +250,7 @@ fn main() {
             state.toplevels.len()
         );
         for w in &state.toplevels {
-            eprintln!("  app_id={:?} cosmic={}", w.app_id, w.cosmic.is_some());
+            eprintln!("  app_id={:?} id={:?}", w.app_id, w.identifier);
         }
     }
 
@@ -260,16 +265,28 @@ fn main() {
         })
         .collect();
 
-    // If the active window is already a match, cycle to the next one.
+    // Cycle: read the last-activated identifier and pick the next one.
+    let last = std::fs::read_to_string(state_path(&target)).ok();
     let matched = if matches.len() > 1 {
-        if let Some(pos) = matches.iter().position(|w| w.activated) {
-            Some(matches[(pos + 1) % matches.len()])
+        if let Some(last_id) = &last {
+            let last_id = last_id.trim();
+            if let Some(pos) = matches.iter().position(|w| {
+                w.identifier.as_deref() == Some(last_id)
+            }) {
+                Some(matches[(pos + 1) % matches.len()])
+            } else {
+                matches.first().copied()
+            }
         } else {
             matches.first().copied()
         }
     } else {
         matches.first().copied()
     };
+
+    if debug {
+        eprintln!("waylos: last={last:?} matched_id={:?}", matched.and_then(|w| w.identifier.as_deref()));
+    }
 
     match matched {
         Some(w) => {
@@ -287,6 +304,10 @@ fn main() {
             });
             manager.activate(cosmic, seat);
             conn.flush().expect("flush");
+            // Remember which window we activated for cycling.
+            if let Some(id) = &w.identifier {
+                let _ = std::fs::write(state_path(&target), id);
+            }
         }
         None if !launch_cmd.is_empty() => {
             process::Command::new(&launch_cmd[0])
