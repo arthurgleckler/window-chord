@@ -30,4 +30,5 @@ The binary will be at
 Put it on your path.
 
 See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.  (But they describe
-the version before ~window-chord-helper~.)
+the version before ~window-chord-helper~.  I've also added ~waylos~,
+the COSMIC- and Wayland-specific equivalent to ~launch-or-select~.)
