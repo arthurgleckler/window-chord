@@ -30,5 +30,5 @@ The binary will be at
 Put it on your path.
 
 See [[https://speechcode.com/blog/window-chord][my blog post]] and [[https://speechcode.com/blog/vertical-monitor][follow-up]] for more details.  (But they describe
-the version before ~window-chord-helper~.  I've also added ~coschord~,
-the COSMIC-specific equivalent to ~launch-or-select~.)
+the version before ~window-chord-helper~.  I've also added [[https://github.com/arthurgleckler/cosmic-chord.git][COSMIC
+Chord]], the COSMIC-specific equivalent to ~launch-or-select~.)
