@@ -1,6 +1,6 @@
-/// waylos — Wayland Launch Or Select
+/// coschord — COSMIC Launch Or Activate
 ///
-/// Usage: waylos <app_id> [launch_command...]
+/// Usage: coschord <app_id> [launch_command...]
 ///
 /// Activates a toplevel whose app_id contains <app_id> (case-insensitive).
 /// If there are multiple matches, cycles through them on repeated
@@ -208,13 +208,13 @@ impl Dispatch<zcosmic_toplevel_manager_v1::ZcosmicToplevelManagerV1, ()> for Sta
 fn state_path(target: &str) -> std::path::PathBuf {
     let dir = std::env::var("XDG_RUNTIME_DIR")
         .unwrap_or_else(|_| "/tmp".into());
-    std::path::PathBuf::from(dir).join(format!("waylos-{target}.last"))
+    std::path::PathBuf::from(dir).join(format!("coschord-{target}.last"))
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if args.len() < 2 {
-        eprintln!("Usage: waylos <app_id> [launch_command...]");
+        eprintln!("Usage: coschord <app_id> [launch_command...]");
         process::exit(2);
     }
     let target = args[1].to_lowercase();
@@ -223,7 +223,7 @@ fn main() {
     let conn = match Connection::connect_to_env() {
         Ok(c) => c,
         Err(e) => {
-            eprintln!("waylos: cannot connect to compositor: {e}");
+            eprintln!("coschord: cannot connect to compositor: {e}");
             process::exit(2);
         }
     };
@@ -240,10 +240,10 @@ fn main() {
     eq.roundtrip(&mut state).expect("roundtrip 1");
     eq.roundtrip(&mut state).expect("roundtrip 2");
 
-    let debug = std::env::var("WAYLOS_DEBUG").is_ok();
+    let debug = std::env::var("COSCHORD_DEBUG").is_ok();
     if debug {
         eprintln!(
-            "waylos: info={} manager={} seat={} toplevels={}",
+            "coschord: info={} manager={} seat={} toplevels={}",
             state.info.is_some(),
             state.manager.is_some(),
             state.seat.is_some(),
@@ -285,21 +285,21 @@ fn main() {
     };
 
     if debug {
-        eprintln!("waylos: last={last:?} matched_id={:?}", matched.and_then(|w| w.identifier.as_deref()));
+        eprintln!("coschord: last={last:?} matched_id={:?}", matched.and_then(|w| w.identifier.as_deref()));
     }
 
     match matched {
         Some(w) => {
             let manager = state.manager.as_ref().unwrap_or_else(|| {
-                eprintln!("waylos: compositor lacks toplevel management");
+                eprintln!("coschord: compositor lacks toplevel management");
                 process::exit(2)
             });
             let cosmic = w.cosmic.as_ref().unwrap_or_else(|| {
-                eprintln!("waylos: no cosmic handle for toplevel");
+                eprintln!("coschord: no cosmic handle for toplevel");
                 process::exit(2)
             });
             let seat = state.seat.as_ref().unwrap_or_else(|| {
-                eprintln!("waylos: no seat");
+                eprintln!("coschord: no seat");
                 process::exit(2)
             });
             manager.activate(cosmic, seat);
@@ -317,7 +317,7 @@ fn main() {
                 .stderr(process::Stdio::null())
                 .spawn()
                 .unwrap_or_else(|e| {
-                    eprintln!("waylos: failed to launch {}: {e}", launch_cmd[0]);
+                    eprintln!("coschord: failed to launch {}: {e}", launch_cmd[0]);
                     process::exit(2);
                 });
         }
@@ -328,7 +328,7 @@ fn main() {
                     std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default())
                         .join(".config")
                 });
-            let config_path = config_dir.join("waylos/commands.json");
+            let config_path = config_dir.join("coschord/commands.json");
             if let Ok(data) = std::fs::read_to_string(&config_path) {
                 if let Ok(map) = serde_json::from_str::<serde_json::Map<String, serde_json::Value>>(&data) {
                     if let Some(serde_json::Value::Array(arr)) = map.get(&args[1]) {
@@ -341,7 +341,7 @@ fn main() {
                                 .stderr(process::Stdio::null())
                                 .spawn()
                                 .unwrap_or_else(|e| {
-                                    eprintln!("waylos: failed to launch '{}': {e}", cmd[0]);
+                                    eprintln!("coschord: failed to launch '{}': {e}", cmd[0]);
                                     process::exit(2);
                                 });
                             return;
@@ -349,7 +349,7 @@ fn main() {
                     }
                 }
             }
-            eprintln!("waylos: no window matching '{}'", args[1]);
+            eprintln!("coschord: no window matching '{}'", args[1]);
             process::exit(1);
         }
     }
