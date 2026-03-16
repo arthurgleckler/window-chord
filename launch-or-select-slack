@@ -1,5 +1,0 @@
-#!/bin/bash
-
-launch-or-select \
-  slack \
-  /snap/bin/slack

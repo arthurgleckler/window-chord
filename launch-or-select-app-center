@@ -1,5 +1,0 @@
-#!/bin/bash
-
-launch-or-select \
-  io.elementary.appcenter \
-  io.elementary.appcenter

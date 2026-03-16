@@ -1,7 +1,0 @@
-#!/bin/bash
-
-launch-or-select \
-  calibre \
-  flatpak \
-    run \
-    com.calibre_ebook.calibre

@@ -1,5 +1,0 @@
-#!/bin/bash
-
-launch-or-select \
-  Totem \
-  /usr/bin/totem
